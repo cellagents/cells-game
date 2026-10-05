@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cells</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+    <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+
+    <div id="startMenuWrapper">
+        <div id="startMenu">
+            <p>Cells</p>
+            <input type="text" tabindex="0" autofocus placeholder="Enter your name here" id="playerNameInput" maxlength="25" />
+            <b class="input-error">Nick must be alphanumeric characters only!</b>
+            <br />
+            <button id="startButton">Play</button>
+            <button id="spectateButton">Spectate</button>
+            <br />
+            <div id="instructions">
+                <h3>Gameplay</h3>
+                <ul>
+                    <li>Move your mouse on the screen to move your character.</li>
+                    <li>Eat food and other players in order to grow your character (food respawns every time a player eats it).</li>
+                    <li>A player's mass is the number of food particles eaten.</li>
+                    <li>Objective: Try to get fat and eat other players.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/lobby.js"></script>
+</body>
+</html>

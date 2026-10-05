@@ -86,8 +86,11 @@ div {
     /* Normalize so glyphs with uneven baselines sit truly centered. */
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
     text-align: center;
+    /* Some floating buttons are <a> elements (e.g. exit on /spectator);
+       the UA stylesheet underlines anchors by default. */
+    text-decoration: none;
 }
-.floating-btn:hover { background: var(--accent-hover); color: #fff; }
+.floating-btn:hover { background: var(--accent-hover); color: #fff; text-decoration: none; }
 
 /* Right-anchored vertical stack of floating buttons.
    Exit/lock on top (y=10), theme below (y=56), chat toggle at the
@@ -140,15 +143,15 @@ div {
 }
 
 /* -------- Game: leaderboard widget -------- */
-#status {
+body.player-mode #status {
     position: absolute; top: 10px; right: 60px; /* leave room for theme toggle */
     padding: 10px;
     background: var(--panel-bg); color: var(--panel-text);
     font-size: 16.1px; font-weight: bold; text-align: center;
     border-radius: 6px; border: 1px solid var(--panel-border);
 }
-#status .title { font-size: 22px; }
-#status .me { color: var(--title-me); font-size: 16.1px; }
+body.player-mode #status .title { font-size: 22px; }
+body.player-mode #status .me { color: var(--title-me); font-size: 16.1px; }
 
 /* -------- Shared chatbox -------- */
 .chatbox {
@@ -180,7 +183,8 @@ div {
 }
 
 /* Game-page chatbox positioning (admin reuses .chatbox inside its own panel) */
-#gameAreaWrapper > #chatbox {
+/* Player page: chatbox is a direct child of <body> (no SPA wrapper). */
+body.player-mode > #chatbox {
     position: absolute; width: 300px; height: 320px;
     bottom: 5px; left: 5px;
 }
@@ -277,11 +281,6 @@ div {
 #settings { max-height: 0; }
 #startMenu h3 { padding-bottom: 0; margin-bottom: 0; }
 #startMenu ul { margin: 10px; padding: 10px; margin-top: 0; }
-
-#gameAreaWrapper {
-    position: absolute !important; top: 0; left: 0;
-    opacity: 0;
-}
 
 /* -------- Admin dashboard -------- */
 .admin-dashboard {
@@ -394,11 +393,10 @@ body.chat-hidden #chatbox { display: none; }
 
 /* -------- Mobile tweaks -------- */
 @media (max-width: 800px) {
-    /* Game chatbox: hidden entirely on narrow viewports so it doesn't
-       cover the player's own cell. The gameplay surface is the priority
-       on a phone. The chat toggle button hides with it: nothing to
-       toggle. */
-    #gameAreaWrapper > #chatbox { display: none; }
+    /* Player page chatbox: hidden entirely on narrow viewports so it
+       doesn't cover the player's own cell. The chat toggle button
+       hides with it (nothing to toggle). */
+    body.player-mode > #chatbox { display: none; }
     body.player-mode .floating-btn.chat-btn { display: none; }
 
     /* Spectator/follow chatbox: goes full-width overlay. Floating

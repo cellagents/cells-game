@@ -37,6 +37,8 @@ let leaderboardChanged = false;
 const Vector = SAT.Vector;
 
 const clientRoot = path.join(__dirname, '..', 'client');
+app.get('/', (_req, res) => res.sendFile(path.join(clientRoot, 'lobby.html')));
+app.get('/player', (_req, res) => res.sendFile(path.join(clientRoot, 'player.html')));
 app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
 
