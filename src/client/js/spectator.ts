@@ -6,6 +6,11 @@ import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { fullMapCamera } from './thin/camera';
 import { createChat } from './chat/chat';
+import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+
+applyTheme(currentTheme());
+const themeBtn = document.getElementById('themeToggle');
+if (themeBtn) attachThemeToggle(themeBtn);
 
 const canvas = document.getElementById('cvs') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -13,7 +18,16 @@ const leaderboardEl = document.getElementById('leaderboard') as HTMLElement;
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'full' });
 
-if (chatEnabled()) mountChat();
+if (chatEnabled()) {
+    mountChat();
+    const chatBtn = document.getElementById('chatToggle') as HTMLButtonElement | null;
+    if (chatBtn) {
+        chatBtn.hidden = false;
+        chatBtn.addEventListener('click', () => {
+            document.body.classList.toggle('chat-hidden');
+        });
+    }
+}
 
 function chatEnabled(): boolean {
     const raw = new URLSearchParams(window.location.search).get('chat');
