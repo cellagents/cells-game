@@ -388,6 +388,35 @@ body > #chatbox {
     z-index: 10;
 }
 
+/* Status overlay on /spectator and /follow. Sits above chat (z-index
+   10) but below the floating-btn stack (z-index 20) so the user can
+   still toggle theme / exit while disconnected. */
+.status-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 15;
+    background: rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+.status-overlay .status-card {
+    pointer-events: auto;
+    width: 100%; max-width: 400px;
+    padding: 24px;
+    background: var(--menu-card-bg); color: var(--menu-card-text);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    text-align: center;
+}
+.status-overlay .status-card p { margin: 0 0 12px; font-size: 15px; }
+.status-overlay .status-card a {
+    display: inline-block; margin-top: 8px;
+    padding: 8px 16px;
+    background: var(--accent); color: #fff;
+    border-radius: 5px; text-decoration: none;
+    font-size: 14px; font-weight: 500;
+}
+.status-overlay .status-card a:hover { background: var(--accent-hover); }
+
 /* -------- Chat visibility toggle (all canvas pages) -------- */
 body.chat-hidden #chatbox { display: none; }
 

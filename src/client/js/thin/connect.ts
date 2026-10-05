@@ -12,8 +12,14 @@ export interface ConnectOptions {
     follow?: string | null;
 }
 
-type EventName = 'connect' | 'snapshot' | 'world' | 'leaderboard';
+type EventName = 'connect' | 'disconnect' | 'snapshot' | 'world' | 'leaderboard';
 type Listener = (payload: unknown) => void;
+
+/** socket.io-client's disconnect reason strings worth distinguishing.
+ *  'io server disconnect' means the server deliberately closed us
+ *  (kick, shutdown, etc.) and will not reconnect on its own. Anything
+ *  else is transport-level and socket.io's built-in backoff retries. */
+export type DisconnectPayload = { reason: string; deliberate: boolean };
 
 export interface GameHandle {
     socket: Socket;
@@ -50,6 +56,12 @@ export function connect({ gameServerUrl, data = 'full', follow = null }: Connect
     };
 
     socket.on('connect', () => emit('connect', null));
+    socket.on('disconnect', (reason: string) => {
+        // 'io server disconnect' means the server closed us on purpose
+        // (kick, shutdown). Everything else is transport-level and the
+        // socket.io client will auto-reconnect.
+        emit('disconnect', { reason, deliberate: reason === 'io server disconnect' });
+    });
 
     socket.on('welcome', (_playerSettings: unknown, gameSizes: WorldSize) => {
         handle.world = gameSizes;
