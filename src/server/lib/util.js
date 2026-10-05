@@ -2,7 +2,7 @@
 
 'use strict';
 
-const cfg = require('../../../config');
+const cfg = require('../../config');
 
 exports.validNick = function (nickname) {
     var regex = /^\w*$/;

@@ -1,4 +1,4 @@
-const config = require('../../config');
+const config = require('../config');
 const adjustForBoundaries = (position, radius, borderOffset, gameWidth, gameHeight) => {
     const borderCalc = radius + borderOffset;
     if (position.x > gameWidth - borderCalc) {
