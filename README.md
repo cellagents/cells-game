@@ -66,6 +66,41 @@ have a grace period. The bigger you are, the slower you move.
 - `Dockerfile` - Node 22 Alpine, single stage.
 - `config.js` - port, world size, chat settings, etc.
 
+## Branch policy
+
+Two branches of record:
+
+- **`main`** - default, what the deployment builds. All our changes
+  land here.
+- **`upstream-master`** - mirrors the upstream fork lineage
+  (`owenashurst/agar.io-clone`). It only moves when we pull from
+  upstream; we never commit to it directly.
+
+To sync a new upstream version:
+
+```bash
+git remote add upstream https://github.com/owenashurst/agar.io-clone.git
+git fetch upstream
+git checkout upstream-master
+git merge --ff-only upstream/master
+git push origin upstream-master
+```
+
+Then merge `upstream-master` into `main` (not the other way around),
+resolve conflicts, and push:
+
+```bash
+git checkout main
+git merge upstream-master
+# resolve, test, commit
+git push origin main
+```
+
+Rationale: keeping an untouched `upstream-master` makes every
+divergence from upstream visible as a `git diff main..upstream-master`,
+and future upstream syncs reduce to a normal merge rather than an
+archaeological dig.
+
 ## License
 
 MIT, carried from the upstream fork. See `LICENSE`.
