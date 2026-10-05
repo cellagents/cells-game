@@ -37,8 +37,15 @@ npm install
 npm start
 ```
 
-Open <http://localhost:3000>. Default port can be overridden via
-`config.js`.
+Open <http://localhost:3000>. Default values live in `src/config.ts`.
+A few runtime settings can be overridden via environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `HOST` | listen address (default `0.0.0.0`) |
+| `PORT` | listen port (default `3000`) |
+| `ADMIN_PASS` | admin password |
+| `MAX_HEARTBEAT_INTERVAL` | client-inactivity kick threshold in ms. Set to `0` to disable (useful for test harnesses). |
 
 Or with Docker:
 
@@ -59,13 +66,15 @@ have a grace period. The bigger you are, the slower you move.
 
 ## What's in the repo
 
-- `src/server/` - Socket.IO server, authoritative world state, physics
-  loop (60 Hz), metabolism/leaderboard loop (1 Hz), state fan-out (40 Hz).
-- `src/client/` - the default web client (canvas renderer, input,
-  chat). Served from the same Node process at `/`.
-- `scripts/build.mjs`, `webpack.config.js` - client bundle build.
+- `src/server/` - Socket.IO server (TypeScript), authoritative world
+  state, physics loop (60 Hz), metabolism/leaderboard loop (1 Hz), state
+  fan-out (40 Hz).
+- `src/client/` - the default web client (TypeScript, canvas renderer,
+  input, chat). Served from the same Node process at `/`.
+- `src/config.ts` - port, world size, chat settings, etc.
+- `scripts/build.mjs`, `webpack.config.js` - server tsc + client webpack bundle.
+- `tsconfig.server.json`, `tsconfig.client.json` - TypeScript configs.
 - `Dockerfile` - Node 22 Alpine, single stage.
-- `config.js` - port, world size, chat settings, etc.
 
 ## License
 
