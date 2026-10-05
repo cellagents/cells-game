@@ -1,5 +1,7 @@
-node_modules
+bin/
+node_modules/
+client/bower_components/
+.idea/
+*.log
 npm-debug.log
-.idea
-client/bower_components
-bin
+.DS_Store
