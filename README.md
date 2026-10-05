@@ -4,8 +4,6 @@ A multiplayer cell-eating game: move around a map, eat food, grow,
 split, and devour smaller players. Server-authoritative state over
 Socket.IO; HTML5 canvas client served from the same process.
 
-![screenshot](screenshot.png)
-
 ## Lineage
 
 This repo is **a fork of [`owenashurst/agar.io-clone`](https://github.com/owenashurst/agar.io-clone)**,
