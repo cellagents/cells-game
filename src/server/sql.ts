@@ -4,8 +4,7 @@ import fs from 'fs';
 import config from '../config';
 
 const sqlite3 = sqlite3Module.verbose();
-const sqlInfo = config.sqlinfo;
-const dbPath = path.join(__dirname, 'db', sqlInfo.fileName);
+const dbPath = path.join(__dirname, 'db', config.dbFileName);
 
 const dbFolder = path.dirname(dbPath);
 if (!fs.existsSync(dbFolder)) {
