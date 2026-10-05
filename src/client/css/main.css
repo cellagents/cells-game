@@ -1,285 +1,312 @@
-* {
-    font-family: sans-serif;
-    font-size: 14px;
+/* -------- Theme tokens -------- */
+:root,
+html.theme-light {
+    --bg: #e9f3f8;
+    --bg-game: rgba(0, 0, 0, 0.08);
+    --panel-bg: rgba(255, 255, 255, 0.85);
+    --panel-text: #222;
+    --panel-border: rgba(0, 0, 0, 0.08);
+    --chat-input-border: #ccc;
+    --menu-card-bg: #ffffff;
+    --menu-card-text: #222;
+    --menu-input-border: #dcdcdc;
+    --menu-input-border-focus: #cccccc;
+    --title-color: #222;
+    --title-me: #ea6153;
+    --accent: #2ecc71;
+    --accent-dark: #28be68;
+    --accent-hover: #55d88b;
+    --chat-system: #7a4ea2;
+    --chat-admin: #d99400;
+    --chat-friend: #2ecc71;
+    --chat-me: #ea6153;
+    --status-bg: rgba(0, 0, 0, 0.08);
+    --status-text: #222;
+    --status-error-bg: #f8d6d6;
+    --status-error-text: #8a1f1f;
+    --code-bg: #f4f4f4;
+    --code-text: #333;
+}
+html.theme-dark {
+    --bg: #181818;
+    --bg-game: rgba(0, 0, 0, 0.4);
+    --panel-bg: rgba(22, 22, 22, 0.75);
+    --panel-text: #eee;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --chat-input-border: #444;
+    --menu-card-bg: #222;
+    --menu-card-text: #eee;
+    --menu-input-border: #444;
+    --menu-input-border-focus: #666;
+    --title-color: #fff;
+    --title-me: #ff8888;
+    --accent: #2ecc71;
+    --accent-dark: #28be68;
+    --accent-hover: #55d88b;
+    --chat-system: #c58fff;
+    --chat-admin: #ffb84d;
+    --chat-friend: #2ecc71;
+    --chat-me: #ea6153;
+    --status-bg: rgba(0, 0, 0, 0.5);
+    --status-text: #eee;
+    --status-error-bg: #522;
+    --status-error-text: #ffdada;
+    --code-bg: #000;
+    --code-text: #9eff6a;
 }
 
-html, body {
-    background-color: #222;
-    overflow: hidden;
-}
-
-html, body, canvas {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.4);
-
-}
+/* -------- Base -------- */
+* { font-family: sans-serif; font-size: 14px; box-sizing: border-box; }
+html, body { background: var(--bg); overflow: hidden; margin: 0; padding: 0; color: var(--panel-text); }
+html, body, canvas { width: 100%; height: 100%; }
+canvas { background: var(--bg-game); display: block; }
+[hidden] { display: none !important; }
 
 div {
-    -webkit-user-select: none; /* webkit (safari, chrome) browsers */
-    -moz-user-select: none; /* mozilla browsers */
-    -khtml-user-select: none; /* webkit (konqueror) browsers */
-    -ms-user-select: none; /* IE10+ */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
 }
 
-#split {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    width: 100px;
-    height: 100px;
-    padding: 5px;
-    border: none;
+/* -------- Theme toggle -------- */
+.theme-toggle {
+    position: fixed; top: 10px; right: 10px;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg); color: var(--panel-text);
+    font-size: 18px; line-height: 1; cursor: pointer;
+    z-index: 20;
 }
+.theme-toggle:hover { background: var(--accent-hover); color: #fff; }
 
-#feed {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    width: 100px;
-    height: 100px;
-    padding: 5px;
-    border: none;
+/* -------- Game: mobile controls -------- */
+#split, #feed {
+    position: absolute; bottom: 10px; width: 100px; height: 100px;
+    padding: 5px; border: none;
 }
+#split { left: 10px; }
+#feed { right: 10px; }
 
+/* -------- Game: leaderboard widget -------- */
 #status {
-    position: absolute;
+    position: absolute; top: 10px; right: 60px; /* leave room for theme toggle */
     padding: 10px;
-    background: rgba(0, 0, 0, 0.4);
-    color: #FFF;
-    font-size: 16.1px;
-    top: 10px;
-    right: 10px;
-    font-weight: bold;
-    text-align: center;
+    background: var(--panel-bg); color: var(--panel-text);
+    font-size: 16.1px; font-weight: bold; text-align: center;
+    border-radius: 6px; border: 1px solid var(--panel-border);
 }
+#status .title { font-size: 22px; }
+#status .me { color: var(--title-me); font-size: 16.1px; }
 
-#status .title {
-    font-size: 25px;
-}
-
-#status .me {
-    color: #FF8888;
-    font-size: 16.1px;
-}
-
+/* -------- Shared chatbox -------- */
 .chatbox {
-    position: absolute;
-    width: 300px;
-    height: 320px;
-    background: rgba(22, 22, 22, 0.7);
-    bottom: 5px;
-    left: 5px;
-    border-radius: 5px;
+    background: var(--panel-bg); color: var(--panel-text);
+    border-radius: 6px; border: 1px solid var(--panel-border);
+    display: flex; flex-direction: column;
     pointer-events: none;
 }
-
 .chatbox .chat-list {
-    padding: 5px;
-    margin: 0;
-    list-style: none;
-    box-sizing: border-box;
-    height: 285px;
-    overflow: hidden;
+    padding: 6px; margin: 0; list-style: none;
+    flex: 1 1 auto; overflow: auto;
+    min-height: 0;
 }
-
-.chatbox .chat-list li {
-    padding: 2px;
-    margin: 3px;
-}
-
-.chatbox .chat-list li.me b {
-    color: #ea6153;
-}
-
-.chatbox .chat-list li.friend b {
-    color: #2ecc71;
-}
-
+.chatbox .chat-list li { padding: 2px; margin: 3px; }
+.chatbox .chat-list li.me b { color: var(--chat-me); }
+.chatbox .chat-list li.friend b { color: var(--chat-friend); }
+.chatbox .chat-list li.admin b { color: var(--chat-admin); font-weight: 900; }
 .chatbox .chat-list li.system {
-    color: #9b59b6;
-    font-style: italic;
+    color: var(--chat-system); font-style: italic;
 }
-
-.chatbox .chat-list li.system:before {
-    content: "» ";
-}
+.chatbox .chat-list li.system:before { content: "» "; }
 
 .chatbox .chat-input {
     pointer-events: all;
-    box-sizing: border-box;
-    width: 100%;
-    padding: 8px;
-    background: transparent;
-    border: none;
-    border-top: 1px solid #DDD;
-    outline: none;
+    width: 100%; padding: 8px;
+    background: transparent; color: var(--panel-text);
+    border: none; border-top: 1px solid var(--chat-input-border);
+    outline: none; font-size: 14px;
 }
 
-#startMenu {
-    position: relative;
-    margin: auto;
-    margin-top: 100px;
-    width: 350px;
-    padding: 20px;
-    border-radius: 5px;
-    -moz-border-radius: 5px;
-    -webkit-border-radius: 5px;
-    background-color: white;
-    box-sizing: border-box;
+/* Game-page chatbox positioning (admin reuses .chatbox inside its own panel) */
+#gameAreaWrapper > #chatbox {
+    position: absolute; width: 300px; height: 320px;
+    bottom: 5px; left: 5px;
 }
 
-#startMenu p {
-    padding: 0;
+/* -------- Start menu (game) -------- */
+.menu-wrapper {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 2;
+}
+.menu-card {
+    width: 100%; max-width: 400px;
+    padding: 24px;
+    background: var(--menu-card-bg); color: var(--menu-card-text);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.menu-title {
+    margin: 0 0 16px; padding: 0;
+    text-align: center; font-size: 22px; font-weight: bold;
+}
+
+.menu-card input[type=text],
+.menu-card input[type=password] {
+    width: 100%; padding: 10px;
+    background: transparent; color: inherit;
+    border: solid 1px var(--menu-input-border);
+    border-radius: 5px; outline: none;
     text-align: center;
-    font-size: x-large;
-    font-weight: bold;
-}
-
-#playerNameInput {
-    width: 100%;
-    text-align: center;
-    padding: 10px;
-    border: solid 1px #dcdcdc;
+    margin-bottom: 12px;
     transition: box-shadow 0.3s, border 0.3s;
-    box-sizing: border-box;
-    border-radius: 5px;
-    -moz-border-radius: 5px;
-    -webkit-border-radius: 5px;
-    margin-bottom: 10px;
-    outline: none;
 }
-
-#playerNameInput:focus, #playerNameInput.focus {
-    border: solid 1px #CCCCCC;
-    box-shadow: 0 0 3px 1px #DDDDDD;
+.menu-card input[type=text]:focus,
+.menu-card input[type=password]:focus {
+    border-color: var(--menu-input-border-focus);
+    box-shadow: 0 0 3px 1px rgba(0, 0, 0, 0.1);
 }
+.menu-card .input-error { color: #c33; font-size: 12px; opacity: 0; display: block; margin-bottom: 8px; }
 
-#startButton, #spectateButton {
-    position: relative;
-    margin: auto;
-    margin-top: 10px;
-    width: 100%;
-    height: 40px;
-    box-sizing: border-box;
-    font-size: large;
-    color: white;
-    text-align: center;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-    background: #2ecc71;
-    border: 0;
-    border-bottom: 2px solid #28be68;
-    cursor: pointer;
-    -webkit-box-shadow: inset 0 -2px #28be68;
-    box-shadow: inset 0 -2px #28be68;
-    border-radius: 5px;
-    -moz-border-radius: 5px;
-    -webkit-border-radius: 5px;
+.menu-button {
+    display: block; width: 100%; height: 42px;
+    font-size: 16px; color: #fff; text-align: center;
+    background: var(--accent); border: 0;
+    border-bottom: 2px solid var(--accent-dark);
+    box-shadow: inset 0 -2px var(--accent-dark);
+    border-radius: 5px; cursor: pointer;
     margin-bottom: 10px;
 }
-
-#spectateButton:active, #spectateButton:hover,
-#startButton:active, #startButton:hover {
-    top: 1px;
-    background: #55D88B;
-    outline: none;
-    -webkit-box-shadow: none;
-    box-shadow: none;
+.menu-button:hover, .menu-button:active {
+    background: var(--accent-hover); box-shadow: none;
+}
+.menu-button-sm {
+    display: inline-block; width: auto; height: auto;
+    padding: 4px 10px; font-size: 12px; margin: 0;
 }
 
-#settingsButton {
-    position: relative;
-    margin: auto;
-    margin-top: 10px;
-    width: 100%;
-    height: 40px;
-    box-sizing: border-box;
-    font-size: large;
-    color: white;
-    text-align: center;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-    background: #2ecc71;
-    border: 0;
-    border-bottom: 2px solid #28be68;
-    cursor: pointer;
-    -webkit-box-shadow: inset 0 -2px #28be68;
-    box-shadow: inset 0 -2px #28be68;
-    border-radius: 5px;
-    -moz-border-radius: 5px;
-    -webkit-border-radius: 5px;
-    margin-bottom: 10px;
+/* Legacy game start-menu ids reuse the above styles. */
+#startMenuWrapper { position: absolute; inset: 0; z-index: 2; }
+#startMenuWrapper, #settings {
+    overflow: hidden; transition: max-height 1s;
 }
-
-#settingsButton:active, #settingsButton:hover {
-    top: 1px;
-    background: #55D88B;
-    outline: none;
-    -webkit-box-shadow: none;
-    box-shadow: none;
+#startMenu {
+    width: 100%; max-width: 400px;
+    margin: 100px auto 0; padding: 24px;
+    background: var(--menu-card-bg); color: var(--menu-card-text);
+    border-radius: 8px;
 }
-
-#settings, #startMenuWrapper {
-    -webkit-transition: max-height 1s;
-    -moz-transition: max-height 1s;
-    -ms-transition: max-height 1s;
-    -o-transition: max-height 1s;
-    transition: max-height 1s;
-    overflow: hidden;
+#startMenu p {
+    padding: 0; text-align: center; font-size: 22px; font-weight: bold;
+    margin: 0 0 16px;
 }
-
-#settings {
-    max-height: 0;
+#playerNameInput {
+    width: 100%; padding: 10px;
+    background: transparent; color: inherit;
+    border: solid 1px var(--menu-input-border); border-radius: 5px;
+    outline: none; text-align: center; margin-bottom: 10px;
+    transition: box-shadow 0.3s, border 0.3s;
 }
-
-#startMenu h3 {
-    padding-bottom: 0;
-    margin-bottom: 0;
+#playerNameInput:focus { border-color: var(--menu-input-border-focus); box-shadow: 0 0 3px 1px rgba(0,0,0,0.1); }
+#startMenu .input-error { color: #c33; opacity: 0; font-size: 12px; display: block; margin-bottom: 8px; }
+#startButton, #spectateButton, #settingsButton {
+    display: block; width: 100%; height: 42px;
+    font-size: 16px; color: #fff; text-align: center;
+    background: var(--accent); border: 0;
+    border-bottom: 2px solid var(--accent-dark);
+    box-shadow: inset 0 -2px var(--accent-dark);
+    border-radius: 5px; cursor: pointer; margin-bottom: 10px;
 }
-
-#startMenu ul {
-    margin: 10px;
-    padding: 10px;
-    margin-top: 0;
+#startButton:hover, #spectateButton:hover, #settingsButton:hover,
+#startButton:active, #spectateButton:active, #settingsButton:active {
+    background: var(--accent-hover); box-shadow: none;
 }
-
-#startMenu .input-error {
-    color: red;
-    opacity: 0;
-    font-size : 12px;
-}
-
-#startMenuWrapper {
-    z-index: 2;
-}
+#settings { max-height: 0; }
+#startMenu h3 { padding-bottom: 0; margin-bottom: 0; }
+#startMenu ul { margin: 10px; padding: 10px; margin-top: 0; }
 
 #gameAreaWrapper {
-    position: absolute !important;
-    top: 0;
-    left: 0;
+    position: absolute !important; top: 0; left: 0;
     opacity: 0;
 }
 
-@media only screen  and (min-width : 1224px) {
-#mobile {
-display: none;
-	}
+/* -------- Admin dashboard -------- */
+.admin-dashboard {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    padding: 60px 20px 20px; /* top padding leaves room for theme toggle */
+    overflow: auto;
+}
+.admin-header {
+    display: flex; align-items: baseline; gap: 16px;
+    margin: 0 auto 20px;
+    width: 100%; max-width: 1600px;
+    color: var(--panel-text);
+}
+.admin-header .admin-title { font-size: 22px; font-weight: bold; }
+.admin-header .session-meta { font-size: 12px; opacity: 0.7; }
+.admin-header .menu-button-sm { margin-left: auto; }
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    max-width: 1600px; margin: 0 auto; width: 100%;
+    align-items: stretch;
+}
+.overlay-panel {
+    background: var(--panel-bg); color: var(--panel-text);
+    border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 14px; min-width: 0;
+    display: flex; flex-direction: column;
+}
+.overlay-panel .panel-title {
+    font-weight: bold; font-size: 15px;
+    margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: space-between;
 }
 
-@media only screen  and (max-width : 1224px) {
-#chatbox {
-display: none;
-        }
+/* Admin chat panel: let the chatbox fill the panel body. */
+.overlay-panel #chatbox {
+    flex: 1 1 auto; min-height: 320px;
+    pointer-events: all;
 }
 
-input [type="image"]:focus{
- border:none;
- outline: 1px solid transparent;
- border-style: none;
+/* Players list inside a panel */
+.players-list {
+    overflow: auto; max-height: 60vh;
+}
+.player-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid var(--panel-border);
+}
+.player-row:last-child { border-bottom: 0; }
+.player-row button {
+    padding: 4px 10px; background: #c33; color: #fff;
+    border: 0; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.player-row button:hover { background: #e55; }
+
+/* Raw state */
+.overlay-panel pre {
+    background: var(--code-bg); color: var(--code-text);
+    padding: 10px; border-radius: 4px; overflow: auto;
+    font-size: 12px; max-height: 60vh; margin: 0;
 }
 
-*:focus {
- outline: 1px solid transparent;
- border-style: none;
+/* Status banner (shared) */
+.status {
+    padding: 8px 10px; margin: 8px 0; border-radius: 4px;
+    background: var(--status-bg); color: var(--status-text);
 }
+.status.error { background: var(--status-error-bg); color: var(--status-error-text); }
+
+/* -------- Mobile tweaks -------- */
+@media only screen and (min-width: 1224px) { #mobile { display: none; } }
+@media only screen and (max-width: 1224px) {
+    #gameAreaWrapper > #chatbox { display: none; }
+}
+
+*:focus { outline: 1px solid transparent; border-style: none; }

@@ -5,6 +5,8 @@
 // Any 401 from the API (bad or stale token) also drops back to login.
 
 import { io, Socket } from 'socket.io-client';
+import { createChat, ChatHandle } from './chat/chat';
+import { applyTheme, currentTheme, attachThemeToggle } from './theme';
 
 const TOKEN_KEY = 'cellagents.adminToken';
 const EXPIRY_KEY = 'cellagents.adminExpiresAt';
@@ -12,6 +14,7 @@ const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour sliding
 // The admin UI is only served by its own game server, so target it directly.
 // No field surfaces this; cross-origin admin is intentionally not supported.
 const SERVER_BASE = window.location.origin.replace(/\/$/, '');
+const ADMIN_SENDER = 'ADMIN';
 
 const loginView = document.getElementById('login-view') as HTMLElement;
 const adminView = document.getElementById('admin-view') as HTMLElement;
@@ -20,16 +23,19 @@ const loginTokenInput = document.getElementById('login-token') as HTMLInputEleme
 const loginStatusEl = document.getElementById('login-status') as HTMLElement;
 
 const sessionExpiryEl = document.getElementById('session-expiry') as HTMLElement;
-const broadcastInput = document.getElementById('broadcast-msg') as HTMLInputElement;
 const statusEl = document.getElementById('status') as HTMLElement;
 const stateEl = document.getElementById('state') as HTMLElement;
 const playersEl = document.getElementById('players') as HTMLElement;
-const logEl = document.getElementById('log') as HTMLUListElement;
+const chatboxEl = document.getElementById('chatbox') as HTMLElement;
 
 let refreshTimer: number | null = null;
 let expiryTimer: number | null = null;
 let logSocket: Socket | null = null;
-const LOG_MAX_LINES = 200;
+let chat: ChatHandle | null = null;
+
+applyTheme(currentTheme());
+const themeBtn = document.getElementById('themeToggle');
+if (themeBtn) attachThemeToggle(themeBtn);
 
 function getToken(): string | null {
     const token = sessionStorage.getItem(TOKEN_KEY);
@@ -50,67 +56,7 @@ function clearSession(): void {
     sessionStorage.removeItem(EXPIRY_KEY);
     if (refreshTimer !== null) { clearInterval(refreshTimer); refreshTimer = null; }
     if (expiryTimer !== null) { clearTimeout(expiryTimer); expiryTimer = null; }
-    disconnectLogSocket();
-}
-
-// Server log via Socket.IO. Opens on login, closes on logout / expiry.
-// Mirrors the events the player chat renders: broadcasts, chat messages,
-// joins, disconnects, deaths. Nothing before login appears here.
-function connectLogSocket(): void {
-    if (logSocket) return;
-    // Join as a spectator so the server includes us in io.emit() broadcasts.
-    // Using data=full to avoid activating the viewport filter path.
-    logSocket = io(SERVER_BASE, { query: { type: 'spectator', data: 'full' }, reconnection: true });
-    logSocket.on('connect', () => appendLog('system', 'admin log connected'));
-    logSocket.on('welcome', () => logSocket && logSocket.emit('gotit'));
-    logSocket.on('serverMSG', (msg: string) => appendLog('system', msg));
-    logSocket.on('serverSendPlayerChat', (d: { sender: string; message: string }) => appendLog('chat', `${d.sender}: ${d.message}`));
-    logSocket.on('playerJoin', (d: { name: string }) => {
-        // Server emits `playerJoin` with an empty name on every spectator
-        // handshake (including this admin's own log socket). Drop those to
-        // keep the panel focused on actual players.
-        if (!d || !d.name) return;
-        appendLog('join', `${nameOrUnnamed(d.name)} joined`);
-    });
-    logSocket.on('playerDisconnect', (d: { name: string }) => {
-        if (!d || !d.name) return;
-        appendLog('leave', `${nameOrUnnamed(d.name)} disconnected`);
-    });
-    logSocket.on('playerDied', (d: { name?: string; playerEatenName?: string }) => {
-        const who = d.playerEatenName ?? d.name ?? '';
-        appendLog('death', `${nameOrUnnamed(who)} was eaten`);
-    });
-}
-
-function disconnectLogSocket(): void {
-    if (logSocket) { logSocket.disconnect(); logSocket = null; }
-    // Reset placeholder for the next login.
-    logEl.innerHTML = '<li class="log-placeholder">waiting for events...</li>';
-}
-
-function nameOrUnnamed(name: string | null | undefined): string {
-    return name && name.length > 0 ? name : 'An unnamed cell';
-}
-
-function appendLog(kind: 'system' | 'chat' | 'join' | 'leave' | 'death', text: string): void {
-    // Replace placeholder on first real line.
-    const placeholder = logEl.querySelector('.log-placeholder');
-    if (placeholder) placeholder.remove();
-
-    const li = document.createElement('li');
-    li.className = `log-${kind}`;
-    const ts = document.createElement('span');
-    ts.className = 'log-ts';
-    ts.textContent = new Date().toLocaleTimeString();
-    const body = document.createElement('span');
-    body.textContent = text;
-    li.appendChild(ts);
-    li.appendChild(body);
-    // Newest at top.
-    logEl.prepend(li);
-    while (logEl.children.length > LOG_MAX_LINES) {
-        logEl.lastElementChild?.remove();
-    }
+    tearDownChat();
 }
 
 function scheduleExpiry(expiry: number): void {
@@ -122,8 +68,44 @@ function scheduleExpiry(expiry: number): void {
 }
 
 function renderExpiry(expiry: number): void {
-    const d = new Date(expiry);
-    sessionExpiryEl.textContent = d.toLocaleTimeString();
+    sessionExpiryEl.textContent = new Date(expiry).toLocaleTimeString();
+}
+
+function tearDownChat(): void {
+    if (chat) { chat.destroy(); chat = null; }
+    if (logSocket) { logSocket.disconnect(); logSocket = null; }
+}
+
+function connectChat(): void {
+    if (chat) return;
+    // Admin joins as a spectator so the server includes it in io.emit().
+    logSocket = io(SERVER_BASE, { query: { type: 'spectator', data: 'full' }, reconnection: true });
+    logSocket.on('welcome', () => logSocket && logSocket.emit('gotit'));
+
+    chat = createChat({
+        container: chatboxEl,
+        socket: logSocket,
+        events: { chat: true, system: true, join: true, leave: true, death: true },
+        selfName: ADMIN_SENDER,
+        maxLines: 100,
+        enableInput: true,
+        inputPlaceholder: 'Broadcast as ADMIN...',
+        onSendMessage: (text) => broadcastAsAdmin(text)
+    });
+}
+
+async function broadcastAsAdmin(message: string): Promise<void> {
+    try {
+        const res = await apiCall('/admin/broadcast', { method: 'POST', body: JSON.stringify({ message }) });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `${res.status}`);
+        }
+        // The server echoes the broadcast as serverSendPlayerChat, so the
+        // sent line appears via the socket subscription. No local append.
+    } catch (err) {
+        if ((err as Error).message !== '401') setStatus(`broadcast failed: ${(err as Error).message}`, true);
+    }
 }
 
 function headers(): HeadersInit {
@@ -132,6 +114,7 @@ function headers(): HeadersInit {
 }
 
 function setStatus(text: string, isError = false): void {
+    statusEl.hidden = false;
     statusEl.textContent = text;
     statusEl.className = isError ? 'status error' : 'status';
 }
@@ -159,15 +142,11 @@ function showAdmin(): void {
     if (expiry) { scheduleExpiry(expiry); renderExpiry(expiry); }
     if (refreshTimer === null) refreshTimer = window.setInterval(refreshState, 2000);
     refreshState();
-    connectLogSocket();
+    connectChat();
 }
 
-// Probe /admin/state with the given token against this origin. Resolves
-// true on 200, false on 401. Any other outcome throws.
 async function verifyToken(token: string): Promise<boolean> {
-    const res = await fetch(`${SERVER_BASE}/admin/state`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res = await fetch(`${SERVER_BASE}/admin/state`, { headers: { 'Authorization': `Bearer ${token}` } });
     if (res.status === 401) return false;
     if (!res.ok) throw new Error(`unexpected ${res.status}`);
     return true;
@@ -207,34 +186,29 @@ async function refreshState(): Promise<void> {
         stateEl.textContent = JSON.stringify(body, null, 2);
         renderPlayerList(body.players || []);
     } catch (err) {
-        if ((err as Error).message !== '401') {
-            stateEl.textContent = `error: ${(err as Error).message}`;
-        }
+        if ((err as Error).message !== '401') stateEl.textContent = `error: ${(err as Error).message}`;
     }
 }
 
 interface PlayerRow { id: string; name: string | null; massTotal: number; cells: number; }
 
+function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]));
+}
+
 function renderPlayerList(players: PlayerRow[]): void {
-    if (players.length === 0) {
-        playersEl.innerHTML = '<em>no players</em>';
-        return;
-    }
+    if (players.length === 0) { playersEl.innerHTML = '<em>no players</em>'; return; }
     playersEl.innerHTML = players.map((p) => {
         const display = (p.name && p.name.length > 0) ? p.name : '(unnamed)';
         const safeName = String(p.name || '').replace(/"/g, '&quot;');
         return `<div class="player-row">
             <span>${escapeHtml(display)} · mass ${p.massTotal} · ${p.cells} cell(s)</span>
-            <button class="danger kick-btn" data-name="${safeName}">kick</button>
+            <button class="kick-btn" data-name="${safeName}">kick</button>
         </div>`;
     }).join('');
     for (const btn of Array.from(playersEl.querySelectorAll<HTMLButtonElement>('.kick-btn'))) {
         btn.addEventListener('click', () => kick(btn.dataset.name || ''));
     }
-}
-
-function escapeHtml(s: string): string {
-    return String(s).replace(/[&<>"']/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]));
 }
 
 async function kick(name: string): Promise<void> {
@@ -251,39 +225,17 @@ async function kick(name: string): Promise<void> {
     }
 }
 
-async function broadcast(): Promise<void> {
-    const message = broadcastInput.value.trim();
-    if (!message) { setStatus('message required', true); return; }
-    setStatus(`broadcasting...`);
-    try {
-        const res = await apiCall('/admin/broadcast', { method: 'POST', body: JSON.stringify({ message }) });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || `${res.status}`);
-        setStatus(`broadcast sent`);
-        broadcastInput.value = '';
-    } catch (err) {
-        if ((err as Error).message !== '401') setStatus(`error: ${(err as Error).message}`, true);
-    }
-}
-
 loginForm.addEventListener('submit', handleLoginSubmit);
 document.getElementById('btn-logout')!.addEventListener('click', () => showLogin('Locked.'));
-document.getElementById('btn-broadcast')!.addEventListener('click', () => broadcast());
 document.getElementById('btn-refresh')!.addEventListener('click', () => refreshState());
 
-// Boot: if the session is still valid, verify with the server; otherwise
-// show login.
 async function boot(): Promise<void> {
     const token = getToken();
     if (!token) { showLogin(); return; }
     try {
         const ok = await verifyToken(token);
-        if (ok) {
-            touchSession();
-            showAdmin();
-        } else {
-            showLogin('Stored token rejected. Please unlock again.');
-        }
+        if (ok) { touchSession(); showAdmin(); }
+        else showLogin('Stored token rejected. Please unlock again.');
     } catch {
         showLogin('Could not reach the server. Please unlock again.');
     }
