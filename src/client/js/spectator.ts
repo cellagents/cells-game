@@ -25,18 +25,11 @@ applyTheme(currentTheme());
 const themeBtn = document.getElementById('themeToggle');
 if (themeBtn) attachThemeToggle(themeBtn);
 
-// Set to true the instant we start navigating away. Suppresses the
-// reconnect overlay that would otherwise flash in the brief render
-// tick between socket.close() and page unload.
 let leaving = false;
 function leaveToLobby(): void {
-    // No re-entry guard here: if the browser swallows the navigation
-    // for whatever reason (focused element, event-handling quirk), the
-    // user hitting ESC or the × button again must try again, not get
-    // silently trapped by a flag we set on the first attempt.
     leaving = true;
+    setTimeout(() => { window.location.href = '/'; }, 0);
     try { game.disconnect(); } catch { /* ignore */ }
-    window.location.href = '/';
 }
 
 // Managed mode: embedded in a parent surface (harness panel) that

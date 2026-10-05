@@ -96,18 +96,11 @@ window.chat.socket = socket;
 window.chat.registerFunctions();
 window.canvas.socket = socket;
 
-// Set to true the instant we start navigating away so disconnect-driven
-// side effects (drawing "Disconnected!" on canvas, socket close noise)
-// don't fire a confusing last-frame while the browser is unloading.
 let leaving = false;
 function leaveToLobby(): void {
-    // No re-entry guard here: if the browser swallows the navigation
-    // for whatever reason (focused element, event-handling quirk), the
-    // user hitting ESC or the × button again must try again, not get
-    // silently trapped by a flag we set on the first attempt.
     leaving = true;
+    setTimeout(() => { window.location.href = '/'; }, 0);
     try { socket.close(); } catch { /* ignore */ }
-    window.location.href = '/';
 }
 
 // Floating buttons

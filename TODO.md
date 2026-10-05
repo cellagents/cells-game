@@ -30,3 +30,30 @@ refactor than fits a patch release.
 
 - **No tests.** `test/` has a single `util.js` stub. A minimal mocha
   suite over `lib/util.ts` and `map/player.ts` would catch regressions.
+
+## Known bugs
+
+- **ESC does not navigate to lobby from `/player` and `/spectator`.** The
+  × overlay button works (anchor click → navigation fires normally).
+  The ESC keydown handler runs (we can observe `socket.close()` taking
+  effect: on `/player` the game freezes, on `/spectator` the overlay
+  shows "Reconnecting..."), and `window.location.href` is unchanged
+  afterwards. Reproduced in both Firefox and Chrome, plain top-level
+  tab, no iframe, no PWA. Confirmed from DevTools console that
+  `window.location.assign('/')`, `window.location.replace('/')`, and
+  `window.location = '/'` all navigate successfully after the ESC
+  freeze, so `location` writes themselves are not blocked. Writing
+  `location.href` from inside the keydown handler is dropped silently.
+  Tried: deferring the write via `setTimeout(..., 0)` (no effect);
+  swapping between `.href` / `.assign` / `.replace`; removing a
+  re-entry guard that was trapping subsequent attempts. Ruled out:
+  service worker (none registered), beforeunload handler (none set),
+  pointer lock / fullscreen (none used), the canvas keydown handler
+  stopping propagation (`directionDown` in `canvas.ts` neither
+  prevents default nor stops propagation on ESC). Code path lives in
+  `leaveToLobby()` in `src/client/js/player.ts`,
+  `src/client/js/spectator.ts`, `src/client/js/follow.ts`. Needs
+  deeper investigation; a minimal repro outside the socket.io/canvas
+  context would help isolate whether this is a quirk of running the
+  write immediately after `socket.close()` or something about the
+  keydown target chain.

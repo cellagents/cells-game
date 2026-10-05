@@ -1,6 +1,6 @@
 {
   "name": "cells-game",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Cells: a multiplayer cell-eating game. The cellagents/cells-game server + web client.",
   "main": "bin/server/server.js",
   "scripts": {
