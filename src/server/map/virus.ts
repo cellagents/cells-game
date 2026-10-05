@@ -49,10 +49,10 @@ export class VirusManager {
         }
     }
 
-    // NOTE: original code accepts an index number here even though the parameter
-    // is named 'virusCollision'. Preserved as-is; see TODO.md.
-    delete(virusCollision: number): void {
-        this.data.splice(virusCollision, 1);
+    delete(indexes: number[]): void {
+        if (indexes.length > 0) {
+            this.data = util.removeIndexes(this.data, indexes);
+        }
     }
 }
 
