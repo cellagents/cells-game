@@ -96,13 +96,46 @@ div {
 .floating-btn.lock-btn { top: 10px; }
 .floating-btn.theme-toggle { top: 56px; }
 
-/* -------- Game: mobile controls -------- */
-#split, #feed {
-    position: absolute; bottom: 10px; width: 100px; height: 100px;
-    padding: 5px; border: none;
+/* -------- Game: on-screen touch controls --------
+   Circular, semi-transparent, sized against the smaller viewport
+   dimension so they feel right in both portrait and landscape. */
+.control-btn {
+    position: absolute;
+    width: clamp(64px, 12vmin, 128px);
+    aspect-ratio: 1 / 1;
+    bottom: clamp(10px, 3vmin, 24px);
+    padding: 0; margin: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg); color: var(--panel-text);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-weight: 600;
+    font-size: clamp(11px, 2.2vmin, 18px);
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    /* The canvas sits behind these; prevent taps from steering the cell
+       and prevent iOS from treating a double-tap as zoom. */
+    touch-action: manipulation;
+    user-select: none;
+    z-index: 15;
 }
-#split { left: 10px; }
-#feed { right: 10px; }
+.control-btn:active {
+    background: var(--accent-hover);
+    color: #fff;
+    border-color: var(--accent);
+}
+#split { left: clamp(10px, 3vmin, 24px); }
+#feed  { right: clamp(10px, 3vmin, 24px); }
+
+/* Only show the touch controls to an active player on a coarse-pointer
+   device (phones, tablets). Spectators never see them (no actions to
+   take), and desktop mouse users have keyboard shortcuts (space / w). */
+#mobile { display: none; }
+@media (pointer: coarse) {
+    body.player-mode #mobile { display: block; }
+}
 
 /* -------- Game: leaderboard widget -------- */
 #status {
@@ -320,8 +353,10 @@ div {
 .status.error { background: var(--status-error-bg); color: var(--status-error-text); }
 
 /* -------- Mobile tweaks -------- */
-@media only screen and (min-width: 1224px) { #mobile { display: none; } }
-@media only screen and (max-width: 1224px) {
+/* Hide the chatbox on narrow viewports (phones in portrait) where it
+   would eat half the screen. Visibility of #mobile touch controls is
+   handled above by the pointer-coarse + player-mode rule. */
+@media (max-width: 800px) {
     #gameAreaWrapper > #chatbox { display: none; }
 }
 
