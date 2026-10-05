@@ -1,4 +1,8 @@
 html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: sans-serif; height: 100%; }
+/* The [hidden] attribute must beat per-element display rules below
+   (e.g. #login-view { display: flex }), otherwise toggling .hidden has
+   no visual effect. */
+[hidden] { display: none !important; }
 #cvs { position: absolute; inset: 0; width: 100vw; height: 100vh; display: block; background: #111; }
 
 .sidebar {
@@ -17,6 +21,8 @@ html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: 
 .admin-page h1 { margin-top: 0; }
 .admin-page h2 { margin-top: 0; }
 .admin-page .row { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.admin-page .row.row-center { justify-content: center; }
+.admin-page .row.row-center button { margin: 0; }
 .admin-page label { min-width: 140px; }
 .admin-page input[type=text], .admin-page input[type=password], .admin-page input[type=number] {
   flex: 1; padding: 6px 8px; background: #222; color: #eee; border: 1px solid #444; border-radius: 4px;
