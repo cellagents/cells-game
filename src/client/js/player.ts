@@ -96,13 +96,22 @@ window.chat.socket = socket;
 window.chat.registerFunctions();
 window.canvas.socket = socket;
 
+// Set to true the instant we start navigating away so disconnect-driven
+// side effects (drawing "Disconnected!" on canvas, socket close noise)
+// don't fire a confusing last-frame while the browser is unloading.
+let leaving = false;
+function leaveToLobby(): void {
+    if (leaving) return;
+    leaving = true;
+    try { socket.close(); } catch { /* ignore */ }
+    window.location.assign('/');
+}
+
 // Floating buttons
 const exitBtn = document.getElementById('exitToMenu');
 if (exitBtn) exitBtn.addEventListener('click', (ev) => {
-    // Anchor already navigates; just make sure ESC flow and this flow
-    // behave identically on different browsers.
     ev.preventDefault();
-    window.location.href = '/';
+    leaveToLobby();
 });
 const chatBtn = document.getElementById('chatToggle');
 if (chatBtn) chatBtn.addEventListener('click', () => {
@@ -116,7 +125,7 @@ window.addEventListener('keydown', (ev: KeyboardEvent) => {
     const t = ev.target as HTMLElement | null;
     const tag = t && t.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
-    window.location.href = '/';
+    leaveToLobby();
 });
 
 // Mobile touch controls
@@ -132,6 +141,7 @@ document.getElementById('split')?.addEventListener('click', (ev) => {
 });
 
 function handleDisconnect(): void {
+    if (leaving) return; // navigating away deliberately; don't paint anything
     try { socket.close(); } catch { /* ignore */ }
     if (!global.kicked) {
         render.drawErrorMessage('Disconnected!', graph, global.screen);
