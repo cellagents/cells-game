@@ -1,130 +1,83 @@
-Agar.io Clone
-=============
+# cells-game
 
-This project was originally created by @huytd. I have since taken ownership of the repository to revive the project.
+A multiplayer cell-eating game: move around a map, eat food, grow,
+split, and devour smaller players. Server-authoritative state over
+Socket.IO; HTML5 canvas client served from the same process.
 
-[![GitHub Stars](https://img.shields.io/github/stars/huytd/agar.io-clone.svg)](https://github.com/huytd/agar.io-clone/stargazers)
-[![GitHub Issues](https://img.shields.io/github/issues/huytd/agar.io-clone.svg)](https://github.com/huytd/agar.io-clone/issues)
-[![GitHub Wiki](https://img.shields.io/badge/project-wiki-ff69b4.svg)](https://github.com/huytd/agar.io-clone/wiki/Home)
-[![Live Demo](https://img.shields.io/badge/demo-online-green.svg)](#live-demos)
-[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/huytd/agar.io-clone?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+![screenshot](screenshot.png)
 
-A simple but powerful Agar.IO clone built with socket.IO and HTML5 canvas on top of NodeJS.
+## Lineage
 
-![Image](screenshot.png)
+This repo is **a rename-and-fork of [`owenashurst/agar.io-clone`](https://github.com/owenashurst/agar.io-clone)**
+(originally [`huytd/agar.io-clone`](https://github.com/huytd/agar.io-clone)),
+itself an open-source clone of the browser game
+[**agar.io**](https://agar.io) by Miniclip / Matheus Valadares. The
+original `agar.io` is closed source and unaffiliated with this project.
 
-## Live Demos
-An updated live list of demos can be found on the [Live Demos wiki page](https://github.com/owenashurst/agar.io-clone/wiki/Live-Demos).
+We renamed the module and the Docker image to drop any reference to
+`agar` in order to make the trademark/liability picture unambiguous:
+this is a cell-eating game inspired by the same genre, nothing more.
+Upstream MIT license carries through (see `LICENSE`).
 
-This is the most up to date version from master. Any merged pull requests will deploy to this URL automatically.
+## Why is this repo under `cellagents`?
 
----
+Cell agents is an educational project where **LLM agents play this
+game against each other and against human players.** This repo is one
+of five components in that stack; its job is to be the shared,
+authoritative game world.
 
-## How to Play
-You can check out how to play on our [wiki](https://github.com/owenashurst/agar.io-clone/wiki/How-to-Play).
+Full picture, repository map and architecture diagrams:
+→ [**cellagents.dev/developers**](https://cellagents.dev/developers/)
 
-#### Game Basics
-- Move your mouse around the screen to move your cell.
-- Eat food and other players in order to grow your character (food respawns every time a player eats it).
-- A player's **mass** is the number of food particles eaten.
-- **Objective**: Try to get as big as possible and eat other players.
+If you just want to play, visit [**game.cellagents.dev**](https://game.cellagents.dev).
 
-#### Gameplay Rules
-- Players who haven't eaten yet cannot be eaten as a sort of "grace" period. This invincibility fades once they gain mass.
-- Everytime a player joins the game, **3** food particles will spawn.
-- Everytime a food particle is eaten by a player, **1** new food particle will respawn.
-- The more food you eat, the slower you move to make the game fairer for all.
+## Running locally
 
----
+Node 22+. From a clean checkout:
 
-## Latest Changes
-- Game logic is handled by the server
-- The client side is for rendering of the canvas and its items only.
-- Mobile optimisation.
-- Implementation of working viruses.
-- Display player name.
-- Now supporting chat. 
-- Type`-ping` in the chatbox to check your ping, as well as other commands!
-
----
-
-## Installation
-You can simply click one of the buttons below to easily deploy this repo to Bluemix or Heroku:
-
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
-
-Or...
-
->You can check out a more detailed setup tutorial on our [wiki](https://github.com/owenashurst/agar.io-clone/wiki/Setup).
-
-#### Requirements
-To run / install this game, you'll need: 
-- NodeJS with NPM installed.
-- socket.IO.
-- Express.
-
-
-#### Downloading the dependencies
-After cloning the source code from Github, you need to run the following command to download all the dependencies (socket.IO, express, etc.):
-
-```
+```bash
 npm install
-```
-
-#### Running the Server
-After downloading all the dependencies, you can run the server with the following command:
-
-```
 npm start
 ```
 
-The game will then be accessible at `http://localhost:3000`. The default port is `3000`, however this can be changed in config. Further elaboration is available on our [wiki](https://github.com/owenashurst/agar.io-clone/wiki/Setup).
+Open <http://localhost:3000>. Default port can be overridden via
+`config.js`.
 
+Or with Docker:
 
-### Running the Server with Docker
-If you have [Docker](https://www.docker.com/) installed, after cloning the repository you can run the following commands to start the server and make it acessible at `http://localhost:3000`:
-
+```bash
+docker build -t cells-game .
+docker run --rm -p 3000:3000 cells-game
 ```
-docker build -t agarioclone_agar .
-docker run -it -p 3000:3000 agarioclone_agar
-```
 
----
+## How to play
 
-## FAQ
-1. **What is this game?**
+- Move your mouse to steer your cell.
+- Eat food particles and smaller players to grow.
+- Press `space` to split, `w` to spit food.
+- Objective: outgrow and outlast everyone else.
 
-  This is a clone of the game [Agar.IO](http://agar.io/). Someone said that Agar.IO is a clone of an iPad game called Osmos, but we haven't tried it yet. (Cloneception? :P)
-  
-2. **Why would you make a clone of this game?**
+Players without any mass yet are briefly invincible so new joiners
+have a grace period. The bigger you are, the slower you move.
 
-  Well, while the original game is still online, it is closed-source, and sometimes, it suffers from massive lag. That's why we want to make an open source version of it: for educational purposes, and to let the community add the features that they want, self-host it on their own servers, have fun with friends and more.
-  
-3. **Any plans on adding an online server to compete with Agar.IO or making money out of it?**
+## What's in the repo
 
-  No. This game belongs to the open-source community, and we have no plans on making money out of it nor competing with anything. But you can of course create your own public server, let us know if you do so and we can add it to our Live Demos list!
-  
-4. **Can I deploy this game to my own server?**
+- `src/server/` - Socket.IO server, authoritative world state, physics
+  loop (60 Hz), metabolism/leaderboard loop (1 Hz), state fan-out (40 Hz).
+- `src/client/` - the default web client (canvas renderer, input,
+  chat). Served from the same Node process at `/`.
+- `scripts/build.mjs`, `webpack.config.js` - client bundle build.
+- `Dockerfile` - Node 22 Alpine, single stage.
+- `config.js` - port, world size, chat settings, etc.
 
-  Sure you can! That's what it's made for! ;)
-  
-5. **I don't like HTML5 canvas. Can I write my own game client with this server?**
+## Deploying as part of the Cell agents stack
 
-  Of course! As long as your client supports WebSockets, you can write your game client in any language/technology, even with Unity3D if you want (there is an open source library for Unity to communicate with WebSockets)!
-  
-6. **Can I use some code of this project on my own?**
-
-  Yes you can.
-
-## For Developers
- - [Game Architecture](https://github.com/owenashurst/agar.io-clone/wiki/Game-Architecture) to understand how the backend works.
- - If you want to start your own project, I recommend you use [this template](https://github.com/huytd/node-online-game-template). Happy developing!
- -
-
-## TODOs
- We have an explicit [TODO](https://github.com/owenashurst/agar.io-clone/wiki/Coming-Features) list for the all the features we aim to develop in the future. Feel free to contribute, we'll be more than grateful.
+Nothing deployment-related lives in this repo. The reference deployment
+(Caddy, LiteLLM gateway, MCP server, harness, thin-client bundle, this
+game) is composed in [`cellagents/game.cellagents.dev`](https://github.com/cellagents/game.cellagents.dev),
+which pulls this repo as a build context. See its README for the
+Ansible-driven path.
 
 ## License
->You can check out the full license [here](https://github.com/owenashurst/agar.io-clone/blob/master/LICENSE).
 
-This project is licensed under the terms of the **MIT** license.
+MIT, carried from the upstream fork. See `LICENSE`.
