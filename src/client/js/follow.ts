@@ -1,9 +1,12 @@
 // Follow mode. Renders exactly what the followed player sees
-// (data=viewport). Camera centers on the followed self with a modest zoom.
+// (data=viewport). Camera centers on the followed self with a modest
+// zoom. Chat is shown by default; disable with ?chat=off (also accepts
+// 0/false/no).
 
 import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
+import { createChat } from './chat/chat';
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
@@ -17,6 +20,25 @@ const renderer = new Renderer(canvas);
 const info = document.getElementById('info');
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
+
+if (chatEnabled()) mountChat();
+
+function chatEnabled(): boolean {
+    const raw = params.get('chat');
+    if (raw === null) return true;
+    return !['off', '0', 'false', 'no'].includes(raw.toLowerCase());
+}
+
+function mountChat(): void {
+    const container = document.getElementById('chatbox') as HTMLElement;
+    if (!container) return;
+    createChat({
+        container,
+        socket: game.socket,
+        events: { chat: true, system: true, join: true, leave: true, death: true },
+        maxLines: 50
+    });
+}
 
 game.on('world', (world) => renderer.setWorld(world as { width: number; height: number }));
 
