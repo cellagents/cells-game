@@ -15,6 +15,15 @@
   <button id="chatToggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat" hidden>≡</button>
 
   <canvas id="cvs"></canvas>
+  <!-- Status overlay. JS fills #statusMessage and toggles [hidden] on
+       the wrapper. Sits above chat but below the floating button stack
+       so the user can still toggle theme / exit while disconnected. -->
+  <div id="statusOverlay" class="status-overlay" hidden>
+    <div class="status-card">
+      <p id="statusMessage"></p>
+      <a id="statusAction" href="/" hidden>Back to lobby</a>
+    </div>
+  </div>
   <div id="info"></div>
   <!-- Mounted by follow.js when ?chat is not disabled. The shared
        chat module fills this container with its own markup. -->

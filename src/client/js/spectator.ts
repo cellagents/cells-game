@@ -3,9 +3,10 @@
 // accepts 0/false/no).
 
 import { Renderer, RendererPalette } from './thin/renderer';
-import { connect, resolveGameServer } from './thin/connect';
+import { connect, resolveGameServer, DisconnectPayload } from './thin/connect';
 import { fullMapCamera } from './thin/camera';
 import { createChat } from './chat/chat';
+import { StatusOverlay } from './thin/overlay';
 import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
 
 function paletteFor(theme: 'light' | 'dark'): RendererPalette {
@@ -47,6 +48,23 @@ onThemeChange((t) => renderer.setPalette(paletteFor(t)));
 const leaderboardEl = document.getElementById('leaderboard') as HTMLElement;
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'full' });
+
+// Status overlay drives connection-state feedback. Shows "Connecting"
+// at load until the socket is up, "Reconnecting" on transport drops,
+// and a terminal "Session ended" if the server kicked us.
+const overlay = new StatusOverlay({ showExit: !managed });
+overlay.show('Connecting to server...');
+game.on('connect', () => overlay.hide());
+game.on('disconnect', (payload) => {
+    const d = payload as DisconnectPayload;
+    if (d.deliberate) {
+        // Server told us to go away; socket.io will not reconnect.
+        overlay.show(`Session ended: ${d.reason}`, true);
+    } else {
+        // Transport drop; socket.io's built-in backoff will retry.
+        overlay.show('Reconnecting to server...');
+    }
+});
 
 if (chatEnabled()) {
     mountChat();
