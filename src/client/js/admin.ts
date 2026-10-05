@@ -6,17 +6,17 @@
 
 const TOKEN_KEY = 'cellagents.adminToken';
 const EXPIRY_KEY = 'cellagents.adminExpiresAt';
-const SERVER_KEY = 'cellagents.gameServer';
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour sliding
+// The admin UI is only served by its own game server, so target it directly.
+// No field surfaces this; cross-origin admin is intentionally not supported.
+const SERVER_BASE = window.location.origin.replace(/\/$/, '');
 
 const loginView = document.getElementById('login-view') as HTMLElement;
 const adminView = document.getElementById('admin-view') as HTMLElement;
 const loginForm = document.getElementById('login-form') as HTMLFormElement;
-const loginServerInput = document.getElementById('login-server') as HTMLInputElement;
 const loginTokenInput = document.getElementById('login-token') as HTMLInputElement;
 const loginStatusEl = document.getElementById('login-status') as HTMLElement;
 
-const connectedServerEl = document.getElementById('connected-server') as HTMLElement;
 const sessionExpiryEl = document.getElementById('session-expiry') as HTMLElement;
 const broadcastInput = document.getElementById('broadcast-msg') as HTMLInputElement;
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -31,11 +31,6 @@ function getToken(): string | null {
     const expiry = Number(sessionStorage.getItem(EXPIRY_KEY) || 0);
     if (!token || !expiry || Date.now() > expiry) return null;
     return token;
-}
-
-function getServer(): string {
-    const stored = sessionStorage.getItem(SERVER_KEY);
-    return (stored || window.location.origin).replace(/\/$/, '');
 }
 
 function touchSession(): void {
@@ -85,7 +80,6 @@ function showLogin(reason?: string): void {
     clearSession();
     adminView.hidden = true;
     loginView.hidden = false;
-    loginServerInput.value = getServer();
     loginTokenInput.value = '';
     if (reason) setLoginStatus(reason);
     else loginStatusEl.hidden = true;
@@ -95,17 +89,16 @@ function showLogin(reason?: string): void {
 function showAdmin(): void {
     loginView.hidden = true;
     adminView.hidden = false;
-    connectedServerEl.textContent = getServer();
     const expiry = Number(sessionStorage.getItem(EXPIRY_KEY) || 0);
     if (expiry) { scheduleExpiry(expiry); renderExpiry(expiry); }
     if (refreshTimer === null) refreshTimer = window.setInterval(refreshState, 2000);
     refreshState();
 }
 
-// Attempt to probe /admin/state with a given token+server. Resolves true
-// on 200, false on 401. Any other outcome throws.
-async function verifyToken(server: string, token: string): Promise<boolean> {
-    const res = await fetch(`${server}/admin/state`, {
+// Probe /admin/state with the given token against this origin. Resolves
+// true on 200, false on 401. Any other outcome throws.
+async function verifyToken(token: string): Promise<boolean> {
+    const res = await fetch(`${SERVER_BASE}/admin/state`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (res.status === 401) return false;
@@ -115,15 +108,12 @@ async function verifyToken(server: string, token: string): Promise<boolean> {
 
 async function handleLoginSubmit(ev: Event): Promise<void> {
     ev.preventDefault();
-    const server = loginServerInput.value.trim().replace(/\/$/, '');
     const token = loginTokenInput.value.trim();
-    if (!server) { setLoginStatus('server URL required'); return; }
     if (!token) { setLoginStatus('token required'); return; }
     setLoginStatus('verifying...', false);
     try {
-        const ok = await verifyToken(server, token);
+        const ok = await verifyToken(token);
         if (!ok) { setLoginStatus('invalid token'); return; }
-        sessionStorage.setItem(SERVER_KEY, server);
         sessionStorage.setItem(TOKEN_KEY, token);
         touchSession();
         showAdmin();
@@ -133,7 +123,7 @@ async function handleLoginSubmit(ev: Event): Promise<void> {
 }
 
 async function apiCall(path: string, init: RequestInit = {}): Promise<Response> {
-    const res = await fetch(`${getServer()}${path}`, { ...init, headers: { ...headers(), ...(init.headers || {}) } });
+    const res = await fetch(`${SERVER_BASE}${path}`, { ...init, headers: { ...headers(), ...(init.headers || {}) } });
     if (res.status === 401) {
         showLogin('Session rejected. Please unlock again.');
         throw new Error('401');
@@ -218,10 +208,9 @@ document.getElementById('btn-refresh')!.addEventListener('click', () => refreshS
 // show login.
 async function boot(): Promise<void> {
     const token = getToken();
-    const server = getServer();
     if (!token) { showLogin(); return; }
     try {
-        const ok = await verifyToken(server, token);
+        const ok = await verifyToken(token);
         if (ok) {
             touchSession();
             showAdmin();

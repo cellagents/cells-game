@@ -1,5 +1,7 @@
 // HTTP admin API. Guarded by a bearer token read from config.adminPass
-// (which honors the ADMIN_PASS env var). Mounted at /admin by server.ts.
+// (which honors the ADMIN_PASS env var). Mounted at /admin by server.ts
+// only when adminEnabled() returns true; otherwise the entire /admin
+// surface (HTML page + API) is absent and visitors get a plain 404.
 
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Server as SocketIOServer, Socket } from 'socket.io';
@@ -10,6 +12,15 @@ export interface AdminDeps {
     io: SocketIOServer;
     map: GameMap;
     sockets: Record<string, Socket>;
+}
+
+// Admin is only enabled when the operator has set an explicit, non-default
+// bearer token. The literal "DEFAULT" placeholder from config.example.json
+// is treated as unset so a fresh deployment that forgot to set ADMIN_PASS
+// doesn't accidentally expose admin with the shipped value.
+export function adminEnabled(): boolean {
+    const pw = config.adminPass;
+    return typeof pw === 'string' && pw.length > 0 && pw !== 'DEFAULT';
 }
 
 function bearerAuth(req: Request, res: Response, next: NextFunction): void {
