@@ -85,11 +85,12 @@ div {
 }
 .floating-btn:hover { background: var(--accent-hover); color: #fff; }
 
-/* Right-anchored stack of floating buttons. Each additional button
-   should set its own `right` further from the edge. */
-.floating-btn.theme-toggle { right: 10px; }
-.floating-btn.exit-btn    { right: 56px; }
-.floating-btn.lock-btn    { right: 56px; }
+/* Right-anchored vertical stack of floating buttons. The exit/lock
+   button sits on top; the theme toggle sits below it. */
+.floating-btn { right: 10px; }
+.floating-btn.exit-btn,
+.floating-btn.lock-btn { top: 10px; }
+.floating-btn.theme-toggle { top: 56px; }
 
 /* -------- Game: mobile controls -------- */
 #split, #feed {
