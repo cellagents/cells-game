@@ -3,6 +3,11 @@ import * as render from './render';
 import ChatClient from './chat-client';
 import Canvas from './canvas';
 import global from './global';
+import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+
+applyTheme(currentTheme());
+const themeBtn = document.getElementById('themeToggle');
+if (themeBtn) attachThemeToggle(themeBtn);
 
 declare const $: any;
 declare global {
@@ -38,6 +43,8 @@ function startGame(type: 'player' | 'spectator'): void {
     (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '1';
     if (!socket) {
         socket = io({ query: { type } } as any);
+        (global as any).socket = socket;
+        window.chat = new ChatClient();
         setupSocket(socket);
     }
     if (!(global as any).animLoopHandle)
@@ -46,7 +53,6 @@ function startGame(type: 'player' | 'spectator'): void {
     window.chat.socket = socket;
     window.chat.registerFunctions();
     window.canvas.socket = socket;
-    (global as any).socket = socket;
 }
 
 function validNick(): boolean {
@@ -124,7 +130,8 @@ const target = { x: player.x, y: player.y };
 (global as any).target = target;
 
 window.canvas = new Canvas();
-window.chat = new ChatClient();
+// chat is constructed in startGame() once we have a socket, because the
+// shared chat module subscribes to socket events eagerly.
 
 const visibleBorderSetting = document.getElementById('visBord') as HTMLInputElement;
 visibleBorderSetting.onchange = (window as any).settings?.toggleBorder;
@@ -189,18 +196,8 @@ function setupSocket(socket: any): void {
         resize();
     });
 
-    socket.on('playerDied', (data: any) => {
-        const player = isUnnamedCell(data.playerEatenName) ? 'An unnamed cell' : data.playerEatenName;
-        window.chat.addSystemLine('{GAME} - <b>' + (player) + '</b> was eaten');
-    });
-
-    socket.on('playerDisconnect', (data: any) => {
-        window.chat.addSystemLine('{GAME} - <b>' + (isUnnamedCell(data.name) ? 'An unnamed cell' : data.name) + '</b> disconnected.');
-    });
-
-    socket.on('playerJoin', (data: any) => {
-        window.chat.addSystemLine('{GAME} - <b>' + (isUnnamedCell(data.name) ? 'An unnamed cell' : data.name) + '</b> joined.');
-    });
+    // playerDied, playerDisconnect, playerJoin, serverMSG and
+    // serverSendPlayerChat are now handled by the shared chat module.
 
     socket.on('leaderboard', (data: any) => {
         leaderboard = data.leaderboard;
@@ -220,14 +217,6 @@ function setupSocket(socket: any): void {
             }
         }
         document.getElementById('status')!.innerHTML = status;
-    });
-
-    socket.on('serverMSG', (data: any) => {
-        window.chat.addSystemLine(data);
-    });
-
-    socket.on('serverSendPlayerChat', (data: any) => {
-        window.chat.addChatLine(data.sender, data.message, false);
     });
 
     socket.on('serverTellPlayerMove', (playerData: any, userData: any, foodsList: any, massList: any, virusList: any) => {

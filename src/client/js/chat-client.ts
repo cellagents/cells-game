@@ -1,4 +1,10 @@
+// Game chat controller. Thin wrapper around the shared chat widget that
+// adds the game-specific command set (/dark, /mass, etc.) and the game's
+// focus-handling (ESC returns focus to the canvas).
+
 import global from './global';
+import { createChat, ChatHandle } from './chat/chat';
+import { applyTheme, cycleTheme, currentTheme } from './theme';
 
 interface Command {
     description: string;
@@ -11,110 +17,80 @@ class ChatClient {
     mobile: boolean;
     player: any;
     commands: Record<string, Command>;
+    chat!: ChatHandle;
 
     constructor(_params?: unknown) {
         this.canvas = (global as any).canvas;
         this.socket = (global as any).socket;
         this.mobile = global.mobile;
         this.player = (global as any).player;
-        const self = this;
         this.commands = {};
-        let input = document.getElementById('chatInput') as HTMLInputElement;
-        input.addEventListener('keypress', this.sendChat.bind(this));
-        input.addEventListener('keyup', (key: Event) => {
-            input = document.getElementById('chatInput') as HTMLInputElement;
-            const code = (key as KeyboardEvent).which || (key as KeyboardEvent).keyCode;
-            if (code === global.KEY_ESC) {
-                input.value = '';
-                self.canvas.cv.focus();
-            }
+
+        if (this.mobile) {
+            // Original behaviour: no chat on mobile.
+            (global as any).chatClient = this;
+            return;
+        }
+
+        const container = document.getElementById('chatbox') as HTMLElement;
+        this.chat = createChat({
+            container,
+            socket: this.socket,
+            events: { chat: true, system: true, join: true, leave: true, death: true },
+            selfName: this.player?.name,
+            maxLines: 10,
+            enableInput: true,
+            inputPlaceholder: 'Chat here...',
+            onSendMessage: (text) => this.handleSubmit(text)
         });
+
+        if (this.chat.input) {
+            this.chat.input.addEventListener('keyup', (ev) => {
+                if ((ev as KeyboardEvent).key === 'Escape') {
+                    this.chat.input!.value = '';
+                    this.canvas.cv.focus();
+                }
+            });
+        }
         (global as any).chatClient = this;
     }
-
-    // TODO: Break out many of these GameControls into separate classes.
 
     registerFunctions(): void {
-        const self = this;
-        this.registerCommand('ping', 'Check your latency.', () => {
-            self.checkLatency();
-        });
-
-        this.registerCommand('dark', 'Toggle dark mode.', () => {
-            self.toggleDarkMode();
-        });
-
-        this.registerCommand('border', 'Toggle visibility of border.', () => {
-            self.toggleBorder();
-        });
-
-        this.registerCommand('mass', 'Toggle visibility of mass.', () => {
-            self.toggleMass();
-        });
-
-        this.registerCommand('continuity', 'Toggle continuity.', () => {
-            self.toggleContinuity();
-        });
-
-        this.registerCommand('roundfood', 'Toggle food drawing.', (args) => {
-            self.toggleRoundFood(args);
-        });
-
-        this.registerCommand('help', 'Information about the chat commands.', () => {
-            self.printHelp();
-        });
+        this.registerCommand('ping', 'Check your latency.', () => this.checkLatency());
+        this.registerCommand('dark', 'Toggle dark mode.', () => this.toggleDarkMode());
+        this.registerCommand('border', 'Toggle visibility of border.', () => this.toggleBorder());
+        this.registerCommand('mass', 'Toggle visibility of mass.', () => this.toggleMass());
+        this.registerCommand('continuity', 'Toggle continuity.', () => this.toggleContinuity());
+        this.registerCommand('roundfood', 'Toggle food drawing.', (args) => this.toggleRoundFood(args));
+        this.registerCommand('help', 'Information about the chat commands.', () => this.printHelp());
+        // Keep selfName in sync once we know our name.
+        if (this.chat && this.player?.name) (this.chat as any).selfName = this.player.name;
         (global as any).chatClient = this;
     }
 
+    // Backwards-compatible shims used by app.ts for events the shared chat
+    // doesn't subscribe to directly (welcome, kick, pongcheck replies).
     addChatLine(name: string, message: string, me: boolean): void {
-        if (this.mobile) return;
-        const newline = document.createElement('li');
-        newline.className = me ? 'me' : 'friend';
-        newline.innerHTML = '<b>' + ((name.length < 1) ? 'An unnamed cell' : name) + '</b>: ' + message;
-        this.appendMessage(newline);
+        if (!this.chat) return;
+        this.chat.addChat(me ? (this.player?.name ?? name) : name, message);
     }
 
     addSystemLine(message: string): void {
-        if (this.mobile) return;
-        const newline = document.createElement('li');
-        newline.className = 'system';
-        newline.innerHTML = message;
-        this.appendMessage(newline);
+        if (!this.chat) return;
+        this.chat.addSystem(message);
     }
 
-    appendMessage(node: HTMLElement): void {
-        if (this.mobile) return;
-        const chatList = document.getElementById('chatList')!;
-        if (chatList.childNodes.length > 10) {
-            chatList.removeChild(chatList.childNodes[0]);
+    handleSubmit(text: string): void {
+        if (text.indexOf('-') === 0) {
+            const args = text.substring(1).split(' ');
+            const cmd = this.commands[args[0]];
+            if (cmd) cmd.callback(args.slice(1));
+            else this.addSystemLine('Unrecognized Command: ' + text + ', type -help for more info.');
+        } else {
+            this.socket.emit('playerChat', { sender: this.player.name, message: text });
+            this.addChatLine(this.player.name, text, true);
         }
-        chatList.appendChild(node);
-    }
-
-    sendChat(key: Event): void {
-        const commands = this.commands;
-        const input = document.getElementById('chatInput') as HTMLInputElement;
-        const code = (key as KeyboardEvent).which || (key as KeyboardEvent).keyCode;
-
-        if (code === global.KEY_ENTER) {
-            const text = input.value.replace(/(<([^>]+)>)/ig, '');
-            if (text !== '') {
-                if (text.indexOf('-') === 0) {
-                    const args = text.substring(1).split(' ');
-                    if (commands[args[0]]) {
-                        commands[args[0]].callback(args.slice(1));
-                    } else {
-                        this.addSystemLine('Unrecognized Command: ' + text + ', type -help for more info.');
-                    }
-                } else {
-                    this.socket.emit('playerChat', { sender: this.player.name, message: text });
-                    this.addChatLine(this.player.name, text, true);
-                }
-
-                input.value = '';
-                this.canvas.cv.focus();
-            }
-        }
+        this.canvas.cv.focus();
     }
 
     registerCommand(name: string, description: string, callback: (args: string[]) => void): void {
@@ -122,10 +98,9 @@ class ChatClient {
     }
 
     printHelp(): void {
-        const commands = this.commands;
-        for (const cmd in commands) {
-            if (Object.prototype.hasOwnProperty.call(commands, cmd)) {
-                this.addSystemLine('-' + cmd + ': ' + commands[cmd].description);
+        for (const cmd in this.commands) {
+            if (Object.prototype.hasOwnProperty.call(this.commands, cmd)) {
+                this.addSystemLine('-' + cmd + ': ' + this.commands[cmd].description);
             }
         }
     }
@@ -136,50 +111,32 @@ class ChatClient {
     }
 
     toggleDarkMode(): void {
-        const LIGHT = '#f2fbff';
-        const DARK = '#181818';
-        const LINELIGHT = '#000000';
-        const LINEDARK = '#ffffff';
-
-        if (global.backgroundColor === LIGHT) {
-            global.backgroundColor = DARK;
-            global.lineColor = LINEDARK;
-            this.addSystemLine('Dark mode enabled.');
+        const next = cycleTheme();
+        applyTheme(next);
+        this.addSystemLine(next === 'dark' ? 'Dark mode enabled.' : 'Dark mode disabled.');
+        // Keep the legacy global values the canvas renderer reads in sync.
+        if (next === 'dark') {
+            global.backgroundColor = '#181818';
+            global.lineColor = '#ffffff';
         } else {
-            global.backgroundColor = LIGHT;
-            global.lineColor = LINELIGHT;
-            this.addSystemLine('Dark mode disabled.');
+            global.backgroundColor = '#f2fbff';
+            global.lineColor = '#000000';
         }
     }
 
     toggleBorder(): void {
-        if (!global.borderDraw) {
-            global.borderDraw = true;
-            this.addSystemLine('Showing border.');
-        } else {
-            global.borderDraw = false;
-            this.addSystemLine('Hiding border.');
-        }
+        global.borderDraw = !global.borderDraw;
+        this.addSystemLine(global.borderDraw ? 'Showing border.' : 'Hiding border.');
     }
 
     toggleMass(): void {
-        if (global.toggleMassState === 0) {
-            global.toggleMassState = 1;
-            this.addSystemLine('Viewing mass enabled.');
-        } else {
-            global.toggleMassState = 0;
-            this.addSystemLine('Viewing mass disabled.');
-        }
+        global.toggleMassState = global.toggleMassState === 0 ? 1 : 0;
+        this.addSystemLine(global.toggleMassState === 1 ? 'Viewing mass enabled.' : 'Viewing mass disabled.');
     }
 
     toggleContinuity(): void {
-        if (!global.continuity) {
-            global.continuity = true;
-            this.addSystemLine('Continuity enabled.');
-        } else {
-            global.continuity = false;
-            this.addSystemLine('Continuity disabled.');
-        }
+        global.continuity = !global.continuity;
+        this.addSystemLine(global.continuity ? 'Continuity enabled.' : 'Continuity disabled.');
     }
 
     toggleRoundFood(args: string[]): void {
@@ -193,5 +150,9 @@ class ChatClient {
         }
     }
 }
+
+// Initialise theme from storage before the chat exists so the toggle is in
+// sync when it renders.
+applyTheme(currentTheme());
 
 export default ChatClient;
