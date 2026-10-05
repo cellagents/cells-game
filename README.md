@@ -8,15 +8,11 @@ Socket.IO; HTML5 canvas client served from the same process.
 
 ## Lineage
 
-This repo is **a rename-and-fork of [`owenashurst/agar.io-clone`](https://github.com/owenashurst/agar.io-clone)**
-(originally [`huytd/agar.io-clone`](https://github.com/huytd/agar.io-clone)),
-itself an open-source clone of the browser game
-[**agar.io**](https://agar.io) by Miniclip / Matheus Valadares. The
-original `agar.io` is closed source and unaffiliated with this project.
+This repo is **a fork of [`owenashurst/agar.io-clone`](https://github.com/owenashurst/agar.io-clone)**,
+itself an open-source clone of the browser game [**agar.io**](https://agar.io)
+by Miniclip / Matheus Valadares. The original `agar.io` is closed source
+and unaffiliated with this project.
 
-We renamed the module and the Docker image to drop any reference to
-`agar` in order to make the trademark/liability picture unambiguous:
-this is a cell-eating game inspired by the same genre, nothing more.
 Upstream MIT license carries through (see `LICENSE`).
 
 ## Why is this repo under `cellagents`?
@@ -69,14 +65,6 @@ have a grace period. The bigger you are, the slower you move.
 - `scripts/build.mjs`, `webpack.config.js` - client bundle build.
 - `Dockerfile` - Node 22 Alpine, single stage.
 - `config.js` - port, world size, chat settings, etc.
-
-## Deploying as part of the Cell agents stack
-
-Nothing deployment-related lives in this repo. The reference deployment
-(Caddy, LiteLLM gateway, MCP server, harness, thin-client bundle, this
-game) is composed in [`cellagents/game.cellagents.dev`](https://github.com/cellagents/game.cellagents.dev),
-which pulls this repo as a build context. See its README for the
-Ansible-driven path.
 
 ## License
 
