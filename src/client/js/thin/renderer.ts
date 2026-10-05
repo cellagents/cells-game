@@ -13,11 +13,22 @@ export interface RendererPalette {
     background: string;
     /** World-boundary stroke; also used as the arena-edge accent. */
     boundary: string;
+    /** Food pellet fill. */
+    food: string;
+    /** Ejected-mass fill. */
+    mass: string;
+    /** Virus fill and stroke. */
+    virus: string;
+    virusStroke: string;
 }
 
 const DEFAULT_PALETTE: RendererPalette = {
     background: '#0f1419',
-    boundary: '#4a85f0'
+    boundary: '#4a85f0',
+    food: '#9eff6a',
+    mass: '#d6ff6a',
+    virus: '#33ff33',
+    virusStroke: '#19D119'
 };
 
 export interface Snapshot {
@@ -74,7 +85,7 @@ export class Renderer {
         ctx.strokeRect(tl.x, tl.y, this.world.width * camera.scale, this.world.height * camera.scale);
 
         // Food
-        ctx.fillStyle = '#9eff6a';
+        ctx.fillStyle = this.palette.food;
         for (const f of snapshot.food || []) {
             const p = toScreen(f.x, f.y);
             ctx.beginPath();
@@ -83,7 +94,7 @@ export class Renderer {
         }
 
         // Mass food (ejected mass)
-        ctx.fillStyle = '#d6ff6a';
+        ctx.fillStyle = this.palette.mass;
         for (const m of snapshot.mass || []) {
             const p = toScreen(m.x, m.y);
             ctx.beginPath();
@@ -92,8 +103,8 @@ export class Renderer {
         }
 
         // Viruses
-        ctx.fillStyle = '#33ff33';
-        ctx.strokeStyle = '#19D119';
+        ctx.fillStyle = this.palette.virus;
+        ctx.strokeStyle = this.palette.virusStroke;
         for (const v of snapshot.viruses || []) {
             const p = toScreen(v.x, v.y);
             const r = (v.radius || 60) * camera.scale;

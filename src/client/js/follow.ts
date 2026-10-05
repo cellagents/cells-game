@@ -12,7 +12,14 @@ import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColor
 
 function paletteFor(theme: 'light' | 'dark'): RendererPalette {
     const c = canvasColorsFor(theme);
-    return { background: c.background, boundary: c.border };
+    return {
+        background: c.background,
+        boundary: c.border,
+        food: c.food,
+        mass: c.mass,
+        virus: c.virus,
+        virusStroke: c.virusStroke
+    };
 }
 
 applyTheme(currentTheme());
@@ -32,6 +39,24 @@ if (!followId) {
     throw new Error('redirecting: no ?player= on /follow');
 }
 
+const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const renderer = new Renderer(canvas, paletteFor(currentTheme()));
+onThemeChange((t) => renderer.setPalette(paletteFor(t)));
+const info = document.getElementById('info');
+
+const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
+
+// Set to true the instant we start navigating away. Suppresses the
+// reconnect overlay that would otherwise flash in the brief render
+// tick between game.disconnect() and page unload.
+let leaving = false;
+function leaveToLobby(): void {
+    if (leaving) return;
+    leaving = true;
+    try { game.disconnect(); } catch { /* ignore */ }
+    window.location.assign('/');
+}
+
 // Managed mode: embedded in a parent surface (harness panel) that
 // owns navigation. The × exit button and the ESC-to-exit handler
 // both go away so the student can't accidentally yank the viewport
@@ -43,27 +68,26 @@ if (managed) {
     const exitEl = document.getElementById('exitToMenu');
     if (exitEl) exitEl.hidden = true;
 } else {
+    const exitEl = document.getElementById('exitToMenu');
+    if (exitEl) exitEl.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        leaveToLobby();
+    });
     window.addEventListener('keydown', (ev: KeyboardEvent) => {
         if (ev.key !== 'Escape') return;
         const t = ev.target as HTMLElement | null;
         const tag = t && t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
-        window.location.href = '/';
+        leaveToLobby();
     });
 }
-
-const canvas = document.getElementById('cvs') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, paletteFor(currentTheme()));
-onThemeChange((t) => renderer.setPalette(paletteFor(t)));
-const info = document.getElementById('info');
-
-const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
 
 // Status overlay for connection state.
 const overlay = new StatusOverlay({ showExit: !managed });
 overlay.show('Connecting to server...');
 game.on('connect', () => overlay.hide());
 game.on('disconnect', (payload) => {
+    if (leaving) return;
     const d = payload as DisconnectPayload;
     if (d.deliberate) {
         overlay.show(`Session ended: ${d.reason}`, true);
@@ -99,6 +123,7 @@ game.on('snapshot', (snap: any) => {
 });
 if (!managed) {
     const graceCheck = window.setInterval(() => {
+        if (leaving) { window.clearInterval(graceCheck); return; }
         // Only count time spent connected: being disconnected is the
         // overlay's job, not the follow-redirect's.
         if (connected && Date.now() - lastMatchAt > GRACE_MS) {

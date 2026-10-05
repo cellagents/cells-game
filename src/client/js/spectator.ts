@@ -11,12 +11,30 @@ import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColor
 
 function paletteFor(theme: 'light' | 'dark'): RendererPalette {
     const c = canvasColorsFor(theme);
-    return { background: c.background, boundary: c.border };
+    return {
+        background: c.background,
+        boundary: c.border,
+        food: c.food,
+        mass: c.mass,
+        virus: c.virus,
+        virusStroke: c.virusStroke
+    };
 }
 
 applyTheme(currentTheme());
 const themeBtn = document.getElementById('themeToggle');
 if (themeBtn) attachThemeToggle(themeBtn);
+
+// Set to true the instant we start navigating away. Suppresses the
+// reconnect overlay that would otherwise flash in the brief render
+// tick between socket.close() and page unload.
+let leaving = false;
+function leaveToLobby(): void {
+    if (leaving) return;
+    leaving = true;
+    try { game.disconnect(); } catch { /* ignore */ }
+    window.location.assign('/');
+}
 
 // Managed mode: embedded in a parent surface (harness panel) that
 // owns navigation. The × exit button and the ESC-to-exit handler
@@ -27,12 +45,17 @@ if (managed) {
     const exitEl = document.getElementById('exitToMenu');
     if (exitEl) exitEl.hidden = true;
 } else {
+    const exitEl = document.getElementById('exitToMenu');
+    if (exitEl) exitEl.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        leaveToLobby();
+    });
     window.addEventListener('keydown', (ev: KeyboardEvent) => {
         if (ev.key !== 'Escape') return;
         const t = ev.target as HTMLElement | null;
         const tag = t && t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
-        window.location.href = '/';
+        leaveToLobby();
     });
 }
 
@@ -56,6 +79,7 @@ const overlay = new StatusOverlay({ showExit: !managed });
 overlay.show('Connecting to server...');
 game.on('connect', () => overlay.hide());
 game.on('disconnect', (payload) => {
+    if (leaving) return; // navigating away; don't flash a reconnect overlay
     const d = payload as DisconnectPayload;
     if (d.deliberate) {
         // Server told us to go away; socket.io will not reconnect.

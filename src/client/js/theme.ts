@@ -14,6 +14,15 @@ export interface CanvasColors {
     grid: string;
     border: string;
     outsideArena: string;
+    /** Fill for food pellets (spectator/follow thin renderer). */
+    food: string;
+    /** Fill for ejected mass (thin renderer). */
+    mass: string;
+    /** Fill/stroke for viruses (thin renderer). The dedicated game
+     *  client reads virus colors per-entity from the server payload, so
+     *  these are only consumed by the thin renderer. */
+    virus: string;
+    virusStroke: string;
 }
 
 const CANVAS_COLORS: Record<Theme, CanvasColors> = {
@@ -21,13 +30,21 @@ const CANVAS_COLORS: Record<Theme, CanvasColors> = {
         background: '#fafaf7',
         grid: '#1f2328',
         border: '#2f6feb',
-        outsideArena: 'rgba(31, 35, 40, 0.18)'
+        outsideArena: 'rgba(31, 35, 40, 0.18)',
+        food: '#4a9f2d',
+        mass: '#8ca82f',
+        virus: '#1a9f1a',
+        virusStroke: '#0d5f0d'
     },
     dark: {
         background: '#0f1419',
         grid: '#e6e8eb',
         border: '#4a85f0',
-        outsideArena: 'rgba(0, 0, 0, 0.55)'
+        outsideArena: 'rgba(0, 0, 0, 0.55)',
+        food: '#9eff6a',
+        mass: '#d6ff6a',
+        virus: '#33ff33',
+        virusStroke: '#19D119'
     }
 };
 
