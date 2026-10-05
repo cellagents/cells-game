@@ -141,7 +141,7 @@ const addPlayer = (socket: Socket) => {
         const _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
         const _message = data.message.replace(/(<([^>]+)>)/ig, '');
 
-        if (config.logChat === 1) {
+        if (config.logChat) {
             console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
         }
 
