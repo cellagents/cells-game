@@ -16,17 +16,18 @@
     "type": "git",
     "url": "https://github.com/cellagents/cells-game.git"
   },
-  "author": "Huy Tran",
+  "author": "Cell Agents <info@cellagents.dev>",
   "maintainers": [
-    {
-      "name": "Owen Ashurst"
-    }
+    "Cell Agents <info@cellagents.dev>",
+    "Marek Rost <marek.rost@gmail.com>"
   ],
   "license": "MIT",
   "engines": {
     "node": ">=22"
   },
   "contributors": [
+    "Huy Tran (original author of the upstream fork)",
+    "Owen Ashurst (upstream maintainer)",
     "abalabahaha <hi@abal.moe> (https://github.com/abalabahaha)",
     "Ariamiro <dossantosgusmaosavio@gmail.com> (https://github.com/Ariamiro)",
     "Bjarne Oeverli <bjarne.oeverli@gmail.com> (https://github.com/bjarneo)",
