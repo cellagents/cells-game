@@ -1,5 +1,10 @@
-const config = require('../config');
-const adjustForBoundaries = (position, radius, borderOffset, gameWidth, gameHeight) => {
+export function adjustForBoundaries(
+    position: { x: number; y: number },
+    radius: number,
+    borderOffset: number,
+    gameWidth: number,
+    gameHeight: number
+): void {
     const borderCalc = radius + borderOffset;
     if (position.x > gameWidth - borderCalc) {
         position.x = gameWidth - borderCalc;
@@ -13,8 +18,6 @@ const adjustForBoundaries = (position, radius, borderOffset, gameWidth, gameHeig
     if (position.y < borderCalc) {
         position.y = borderCalc;
     }
-};
+}
 
-module.exports = {
-    adjustForBoundaries
-};
+module.exports = { adjustForBoundaries };
