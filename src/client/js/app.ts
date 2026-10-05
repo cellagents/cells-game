@@ -24,7 +24,6 @@ applyTheme(initialTheme);
 const themeBtn = document.getElementById('themeToggle');
 if (themeBtn) attachThemeToggle(themeBtn);
 
-declare const $: any;
 declare global {
     interface Window {
         chat: any;
@@ -53,6 +52,11 @@ function startGame(type: 'player' | 'spectator'): void {
 
     global.screen.width = window.innerWidth;
     global.screen.height = window.innerHeight;
+
+    // Mark body as player-mode so the touch-control media query can
+    // decide whether to show the on-screen split/eject buttons. Spectators
+    // never get them (no actions to take).
+    document.body.classList.toggle('player-mode', type === 'player');
 
     (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '0px';
     (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '1';
@@ -83,6 +87,7 @@ function exitToMenu(): void {
     }
     window.chat = undefined as any;
     global.gameStart = false;
+    document.body.classList.remove('player-mode');
     (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '0';
     (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '1000px';
     if ((global as any).animLoopHandle) {
@@ -198,12 +203,18 @@ roundFoodSetting.onchange = (window as any).settings?.toggleRoundFood;
 const c = window.canvas.cv as HTMLCanvasElement;
 const graph = c.getContext('2d') as CanvasRenderingContext2D;
 
-$("#feed").click(() => {
+// Wire the on-screen touch controls. `click` fires for both mouse and
+// touch (via a synthesized click), which is enough; the CSS sets
+// touch-action: manipulation to kill the 300ms iOS click delay.
+document.getElementById('feed')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (!socket) return;
     socket.emit('1');
     window.canvas.reenviar = false;
 });
-
-$("#split").click(() => {
+document.getElementById('split')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (!socket) return;
     socket.emit('2');
     window.canvas.reenviar = false;
 });
