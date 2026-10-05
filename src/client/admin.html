@@ -8,6 +8,7 @@
 <body class="admin-page">
   <section id="login-view" hidden>
     <h1>Server admin</h1>
+    <div id="login-status" class="status" hidden></div>
     <form id="login-form">
       <div class="row">
         <label for="login-token">Admin bearer token</label>
@@ -17,7 +18,6 @@
         <button type="submit" id="btn-login">Unlock</button>
       </div>
     </form>
-    <div id="login-status" class="status" hidden></div>
   </section>
 
   <section id="admin-view" hidden>
@@ -41,6 +41,11 @@
           <input id="broadcast-msg" type="text" placeholder="message to all players" />
           <button id="btn-broadcast">Send</button>
         </div>
+      </section>
+
+      <section class="admin-panel">
+        <h2>Server log</h2>
+        <ul id="log" class="log-list"><li class="log-placeholder">waiting for events...</li></ul>
       </section>
 
       <section class="admin-panel">

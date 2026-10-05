@@ -4,6 +4,8 @@
 // page refresh skips the password prompt until the session times out.
 // Any 401 from the API (bad or stale token) also drops back to login.
 
+import { io, Socket } from 'socket.io-client';
+
 const TOKEN_KEY = 'cellagents.adminToken';
 const EXPIRY_KEY = 'cellagents.adminExpiresAt';
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour sliding
@@ -22,9 +24,12 @@ const broadcastInput = document.getElementById('broadcast-msg') as HTMLInputElem
 const statusEl = document.getElementById('status') as HTMLElement;
 const stateEl = document.getElementById('state') as HTMLElement;
 const playersEl = document.getElementById('players') as HTMLElement;
+const logEl = document.getElementById('log') as HTMLUListElement;
 
 let refreshTimer: number | null = null;
 let expiryTimer: number | null = null;
+let logSocket: Socket | null = null;
+const LOG_MAX_LINES = 200;
 
 function getToken(): string | null {
     const token = sessionStorage.getItem(TOKEN_KEY);
@@ -45,6 +50,67 @@ function clearSession(): void {
     sessionStorage.removeItem(EXPIRY_KEY);
     if (refreshTimer !== null) { clearInterval(refreshTimer); refreshTimer = null; }
     if (expiryTimer !== null) { clearTimeout(expiryTimer); expiryTimer = null; }
+    disconnectLogSocket();
+}
+
+// Server log via Socket.IO. Opens on login, closes on logout / expiry.
+// Mirrors the events the player chat renders: broadcasts, chat messages,
+// joins, disconnects, deaths. Nothing before login appears here.
+function connectLogSocket(): void {
+    if (logSocket) return;
+    // Join as a spectator so the server includes us in io.emit() broadcasts.
+    // Using data=full to avoid activating the viewport filter path.
+    logSocket = io(SERVER_BASE, { query: { type: 'spectator', data: 'full' }, reconnection: true });
+    logSocket.on('connect', () => appendLog('system', 'admin log connected'));
+    logSocket.on('welcome', () => logSocket && logSocket.emit('gotit'));
+    logSocket.on('serverMSG', (msg: string) => appendLog('system', msg));
+    logSocket.on('serverSendPlayerChat', (d: { sender: string; message: string }) => appendLog('chat', `${d.sender}: ${d.message}`));
+    logSocket.on('playerJoin', (d: { name: string }) => {
+        // Server emits `playerJoin` with an empty name on every spectator
+        // handshake (including this admin's own log socket). Drop those to
+        // keep the panel focused on actual players.
+        if (!d || !d.name) return;
+        appendLog('join', `${nameOrUnnamed(d.name)} joined`);
+    });
+    logSocket.on('playerDisconnect', (d: { name: string }) => {
+        if (!d || !d.name) return;
+        appendLog('leave', `${nameOrUnnamed(d.name)} disconnected`);
+    });
+    logSocket.on('playerDied', (d: { name?: string; playerEatenName?: string }) => {
+        const who = d.playerEatenName ?? d.name ?? '';
+        appendLog('death', `${nameOrUnnamed(who)} was eaten`);
+    });
+}
+
+function disconnectLogSocket(): void {
+    if (logSocket) { logSocket.disconnect(); logSocket = null; }
+    // Reset placeholder for the next login.
+    logEl.innerHTML = '<li class="log-placeholder">waiting for events...</li>';
+}
+
+function nameOrUnnamed(name: string | null | undefined): string {
+    return name && name.length > 0 ? name : 'An unnamed cell';
+}
+
+function appendLog(kind: 'system' | 'chat' | 'join' | 'leave' | 'death', text: string): void {
+    // Replace placeholder on first real line.
+    const placeholder = logEl.querySelector('.log-placeholder');
+    if (placeholder) placeholder.remove();
+
+    const li = document.createElement('li');
+    li.className = `log-${kind}`;
+    const ts = document.createElement('span');
+    ts.className = 'log-ts';
+    ts.textContent = new Date().toLocaleTimeString();
+    const body = document.createElement('span');
+    body.textContent = text;
+    li.appendChild(ts);
+    li.appendChild(body);
+    // Newest at top.
+    logEl.prepend(li);
+    while (logEl.children.length > LOG_MAX_LINES) {
+        logEl.lastElementChild?.remove();
+    }
 }
 
 function scheduleExpiry(expiry: number): void {
@@ -93,6 +159,7 @@ function showAdmin(): void {
     if (expiry) { scheduleExpiry(expiry); renderExpiry(expiry); }
     if (refreshTimer === null) refreshTimer = window.setInterval(refreshState, 2000);
     refreshState();
+    connectLogSocket();
 }
 
 // Probe /admin/state with the given token against this origin. Resolves
