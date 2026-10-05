@@ -12,8 +12,6 @@ itself an open-source clone of the browser game
 The original `agar.io` is closed source and unaffiliated with this
 project.
 
-Upstream MIT license carries through (see `LICENSE`).
-
 We track the upstream lineage on branch `upstream-master`; our work lives on `main`.
 
 ## Relationship with `cellagents` organization
@@ -49,6 +47,10 @@ The loader searches, in order: `$CELLAGENTS_GAME_CONFIG`,
 wins. `config.json` is gitignored so local tuning doesn't leak into
 version control.
 
+The Socket.IO server (TypeScript) runs authoritative world state
+and physics loop (60 Hz), metabolism/leaderboard loop (1 Hz) and
+state fan-out (40 Hz).
+
 A handful of fields can also be overridden via environment variables
 without editing the file (useful for Docker / CI / test harnesses):
 
@@ -76,20 +78,6 @@ docker run --rm -p 3000:3000 cells-game
 
 Players without any mass yet are briefly invincible so new joiners
 have a grace period. The bigger you are, the slower you move.
-
-## What's in the repo
-
-- `src/server/` - Socket.IO server (TypeScript), authoritative world
-  state, physics loop (60 Hz), metabolism/leaderboard loop (1 Hz), state
-  fan-out (40 Hz).
-- `src/client/` - the default web client (TypeScript, canvas renderer,
-  input, chat). Served from the same Node process at `/`.
-- `config.example.json` - checked-in default configuration (world
-  size, port, admin password, etc.). Copy to `config.json` to tune.
-- `src/config.ts` - typed config loader and env-override logic.
-- `scripts/build.mjs`, `webpack.config.js` - server tsc + client webpack bundle.
-- `tsconfig.server.json`, `tsconfig.client.json` - TypeScript configs.
-- `Dockerfile` - Node 22 Alpine, single stage.
 
 ## License
 
