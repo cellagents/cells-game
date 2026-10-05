@@ -1,6 +1,6 @@
-// Copies non-JS client resources and server sources to bin/, compiles TS
-// files (currently just config.ts), then webpack builds the client bundle
-// via its own CLI call in package.json.
+// Copies non-TS client resources to bin/client (html, css, images, audio),
+// then compiles the server via tsc. The client bundle is built separately
+// by webpack from package.json.
 import { cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -9,9 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcClient = path.join(root, 'src/client');
-const srcServer = path.join(root, 'src/server');
 const binClient = path.join(root, 'bin/client');
-const binServer = path.join(root, 'bin/server');
 
 async function copyDir(from, to, filter) {
     if (!existsSync(from)) return;
@@ -19,10 +17,10 @@ async function copyDir(from, to, filter) {
     await cp(from, to, { recursive: true, filter });
 }
 
-await copyDir(srcClient, binClient, (src) => !src.endsWith('.js'));
-await copyDir(srcServer, binServer);
+// Copy everything under src/client except .ts sources (webpack bundles those).
+await copyDir(srcClient, binClient, (src) => !src.endsWith('.ts'));
 
-// Compile TypeScript sources (progressively more as migration lands).
+// Compile the server (and config.ts) to bin/.
 const tsc = spawnSync('npx', ['tsc', '-p', 'tsconfig.server.json'], {
     cwd: root,
     stdio: 'inherit'
