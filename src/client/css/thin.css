@@ -13,9 +13,9 @@ html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: 
   background: rgba(0,0,0,0.65); border-radius: 6px; font-size: 13px; z-index: 10;
 }
 
-.admin-page { padding: 30px; max-width: 720px; margin: 0 auto; position: static; }
+.admin-page { padding: 30px; margin: 0 auto; position: static; min-height: 100vh; box-sizing: border-box; }
 .admin-page h1 { margin-top: 0; }
-.admin-page h2 { margin-top: 24px; }
+.admin-page h2 { margin-top: 0; }
 .admin-page .row { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .admin-page label { min-width: 140px; }
 .admin-page input[type=text], .admin-page input[type=password], .admin-page input[type=number] {
@@ -30,3 +30,41 @@ html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: 
 .admin-page .status.error { background: #522; }
 .admin-page pre { background: #000; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px; }
 .player-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #333; }
+
+/* Login view: center a narrow card vertically and horizontally. */
+#login-view {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+  box-sizing: border-box;
+}
+#login-view form { width: 100%; max-width: 420px; }
+#login-view h1 { text-align: center; width: 100%; max-width: 420px; }
+#login-view #login-status { width: 100%; max-width: 420px; }
+
+/* Dashboard: three-column grid that collapses to one when a column would
+   be narrower than ~320px. The grid lives inside admin-view; the header
+   above it spans full width. */
+.admin-header { max-width: 1600px; margin: 0 auto 20px; }
+.admin-header h1 { margin-bottom: 4px; }
+.admin-header .session-meta { font-size: 12px; opacity: 0.75; margin-bottom: 8px; }
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  align-items: start;
+}
+.admin-panel {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 0; /* allow pre/code inside to shrink and scroll instead of stretching the column */
+}
+.admin-panel pre { max-height: 60vh; }
