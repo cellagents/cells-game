@@ -268,8 +268,14 @@ const tickGame = () => {
         const playerDied = map.players.removeCell(gotEaten.playerIndex, gotEaten.cellIndex);
         if (playerDied) {
             const playerGotEaten = map.players.data[gotEaten.playerIndex];
-            // TODO: on client it is `playerEatenName` instead of `name`.
-            io.emit('playerDied', { name: playerGotEaten.name });
+            // Historically clients read `playerEatenName` while the server
+            // emitted `name`. Emit both so new chat renderers (which prefer
+            // playerEatenName) show the real name, while any older
+            // subscriber reading `name` keeps working.
+            io.emit('playerDied', {
+                name: playerGotEaten.name,
+                playerEatenName: playerGotEaten.name
+            });
             sockets[playerGotEaten.id].emit('RIP');
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
