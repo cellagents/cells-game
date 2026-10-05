@@ -27,6 +27,7 @@ const statusEl = document.getElementById('status') as HTMLElement;
 const stateEl = document.getElementById('state') as HTMLElement;
 const playersEl = document.getElementById('players') as HTMLElement;
 const chatboxEl = document.getElementById('chatbox') as HTMLElement;
+const lockBtn = document.getElementById('btn-logout-icon') as HTMLButtonElement | null;
 
 let refreshTimer: number | null = null;
 let expiryTimer: number | null = null;
@@ -129,6 +130,7 @@ function showLogin(reason?: string): void {
     clearSession();
     adminView.hidden = true;
     loginView.hidden = false;
+    if (lockBtn) lockBtn.hidden = true;
     loginTokenInput.value = '';
     if (reason) setLoginStatus(reason);
     else loginStatusEl.hidden = true;
@@ -138,6 +140,7 @@ function showLogin(reason?: string): void {
 function showAdmin(): void {
     loginView.hidden = true;
     adminView.hidden = false;
+    if (lockBtn) lockBtn.hidden = false;
     const expiry = Number(sessionStorage.getItem(EXPIRY_KEY) || 0);
     if (expiry) { scheduleExpiry(expiry); renderExpiry(expiry); }
     if (refreshTimer === null) refreshTimer = window.setInterval(refreshState, 2000);
@@ -226,8 +229,19 @@ async function kick(name: string): Promise<void> {
 }
 
 loginForm.addEventListener('submit', handleLoginSubmit);
-document.getElementById('btn-logout')!.addEventListener('click', () => showLogin('Locked.'));
+if (lockBtn) lockBtn.addEventListener('click', () => showLogin('Locked.'));
 document.getElementById('btn-refresh')!.addEventListener('click', () => refreshState());
+
+// Global ESC: lock the dashboard. Ignore ESC while the user is typing
+// (chat input, token field, any editable) so field-level ESC can still
+// cancel input where that's wired.
+window.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (ev.key !== 'Escape') return;
+    const t = ev.target as HTMLElement | null;
+    const tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+    if (!adminView.hidden) showLogin('Locked.');
+});
 
 async function boot(): Promise<void> {
     const token = getToken();
