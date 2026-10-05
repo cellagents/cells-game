@@ -58,6 +58,11 @@ function startGame(type: 'player' | 'spectator'): void {
     // never get them (no actions to take).
     document.body.classList.toggle('player-mode', type === 'player');
 
+    // Reveal the chat toggle button now that a chat exists; it starts
+    // hidden so it doesn't clutter the start menu.
+    const chatBtn = document.getElementById('chatToggle');
+    if (chatBtn) chatBtn.hidden = false;
+
     (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '0px';
     (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '1';
     if (!socket) {
@@ -88,6 +93,9 @@ function exitToMenu(): void {
     window.chat = undefined as any;
     global.gameStart = false;
     document.body.classList.remove('player-mode');
+    document.body.classList.remove('chat-hidden');
+    const chatBtn = document.getElementById('chatToggle');
+    if (chatBtn) chatBtn.hidden = true;
     (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '0';
     (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '1000px';
     if ((global as any).animLoopHandle) {
@@ -107,7 +115,10 @@ function validNick(): boolean {
     const btnS = document.getElementById('spectateButton') as HTMLButtonElement;
     const nickErrorText = document.querySelector('#startMenu .input-error') as HTMLElement;
 
-    btnS.onclick = () => startGame('spectator');
+    // Spectate takes the user to the dedicated full-map view, not the
+    // old in-game spectator overlay. Direct nav keeps the URL honest
+    // and lets the /spectator page own its own chrome.
+    btnS.onclick = () => { window.location.href = '/spectator'; };
 
     btn.onclick = () => {
         if (validNick()) {
@@ -120,6 +131,12 @@ function validNick(): boolean {
 
     const exitBtn = document.getElementById('exitToMenu');
     if (exitBtn) exitBtn.addEventListener('click', () => { if (global.gameStart) exitToMenu(); });
+
+    // Chat toggle: flips body.chat-hidden; CSS hides #chatbox when set.
+    const chatBtn = document.getElementById('chatToggle');
+    if (chatBtn) chatBtn.addEventListener('click', () => {
+        document.body.classList.toggle('chat-hidden');
+    });
 
     // Global ESC: return to menu. Ignore when the user is typing (chat
     // input, name input, any editable field) so ESC-to-clear in those

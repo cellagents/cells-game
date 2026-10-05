@@ -7,6 +7,11 @@ import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
 import { createChat } from './chat/chat';
+import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+
+applyTheme(currentTheme());
+const themeBtn = document.getElementById('themeToggle');
+if (themeBtn) attachThemeToggle(themeBtn);
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
@@ -21,7 +26,16 @@ const info = document.getElementById('info');
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
 
-if (chatEnabled()) mountChat();
+if (chatEnabled()) {
+    mountChat();
+    const chatBtn = document.getElementById('chatToggle') as HTMLButtonElement | null;
+    if (chatBtn) {
+        chatBtn.hidden = false;
+        chatBtn.addEventListener('click', () => {
+            document.body.classList.toggle('chat-hidden');
+        });
+    }
+}
 
 function chatEnabled(): boolean {
     const raw = params.get('chat');
