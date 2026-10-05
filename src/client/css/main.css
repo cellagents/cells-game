@@ -1,57 +1,61 @@
 /* -------- Theme tokens -------- */
+/* Primary accent (blue) tracks cellagents.dev brand palette. Chat line
+   colors stay semantic: red=you, green=friend, orange=admin, purple=system.
+   The chrome accent is blue so it doesn't collide with the friend-chat
+   green. */
 :root,
 html.theme-light {
-    --bg: #e9f3f8;
-    --bg-game: rgba(0, 0, 0, 0.08);
-    --panel-bg: rgba(255, 255, 255, 0.85);
-    --panel-text: #222;
-    --panel-border: rgba(0, 0, 0, 0.08);
-    --chat-input-border: #ccc;
+    --bg: #fafaf7;
+    --bg-game: rgba(0, 0, 0, 0.06);
+    --panel-bg: rgba(255, 255, 255, 0.9);
+    --panel-text: #1f2328;
+    --panel-border: #d0d7de;
+    --chat-input-border: #d0d7de;
     --menu-card-bg: #ffffff;
-    --menu-card-text: #222;
-    --menu-input-border: #dcdcdc;
-    --menu-input-border-focus: #cccccc;
-    --title-color: #222;
+    --menu-card-text: #1f2328;
+    --menu-input-border: #d0d7de;
+    --menu-input-border-focus: #2f6feb;
+    --title-color: #1f2328;
     --title-me: #ea6153;
-    --accent: #2ecc71;
-    --accent-dark: #28be68;
-    --accent-hover: #55d88b;
+    --accent: #2f6feb;
+    --accent-dark: #1f58c7;
+    --accent-hover: #4a85f0;
     --chat-system: #7a4ea2;
     --chat-admin: #d99400;
     --chat-friend: #2ecc71;
     --chat-me: #ea6153;
-    --status-bg: rgba(0, 0, 0, 0.08);
-    --status-text: #222;
+    --status-bg: rgba(47, 111, 235, 0.08);
+    --status-text: #1f2328;
     --status-error-bg: #f8d6d6;
     --status-error-text: #8a1f1f;
     --code-bg: #f4f4f4;
     --code-text: #333;
 }
 html.theme-dark {
-    --bg: #181818;
+    --bg: #0f1419;
     --bg-game: rgba(0, 0, 0, 0.4);
-    --panel-bg: rgba(22, 22, 22, 0.75);
-    --panel-text: #eee;
+    --panel-bg: rgba(22, 26, 32, 0.8);
+    --panel-text: #e6e8eb;
     --panel-border: rgba(255, 255, 255, 0.08);
-    --chat-input-border: #444;
-    --menu-card-bg: #222;
-    --menu-card-text: #eee;
-    --menu-input-border: #444;
-    --menu-input-border-focus: #666;
-    --title-color: #fff;
+    --chat-input-border: #30363d;
+    --menu-card-bg: #1a1f26;
+    --menu-card-text: #e6e8eb;
+    --menu-input-border: #30363d;
+    --menu-input-border-focus: #4a85f0;
+    --title-color: #ffffff;
     --title-me: #ff8888;
-    --accent: #2ecc71;
-    --accent-dark: #28be68;
-    --accent-hover: #55d88b;
+    --accent: #4a85f0;
+    --accent-dark: #2f6feb;
+    --accent-hover: #6b9eff;
     --chat-system: #c58fff;
     --chat-admin: #ffb84d;
     --chat-friend: #2ecc71;
     --chat-me: #ea6153;
-    --status-bg: rgba(0, 0, 0, 0.5);
-    --status-text: #eee;
-    --status-error-bg: #522;
+    --status-bg: rgba(74, 133, 240, 0.12);
+    --status-text: #e6e8eb;
+    --status-error-bg: #4a1f1f;
     --status-error-text: #ffdada;
-    --code-bg: #000;
+    --code-bg: #0b0f14;
     --code-text: #9eff6a;
 }
 

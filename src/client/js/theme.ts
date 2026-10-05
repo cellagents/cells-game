@@ -18,15 +18,15 @@ export interface CanvasColors {
 
 const CANVAS_COLORS: Record<Theme, CanvasColors> = {
     light: {
-        background: '#f2fbff',
-        grid: '#000000',
-        border: '#000000',
-        outsideArena: 'rgba(0, 0, 0, 0.18)'
+        background: '#fafaf7',
+        grid: '#1f2328',
+        border: '#2f6feb',
+        outsideArena: 'rgba(31, 35, 40, 0.18)'
     },
     dark: {
-        background: '#181818',
-        grid: '#ffffff',
-        border: '#ffffff',
+        background: '#0f1419',
+        grid: '#e6e8eb',
+        border: '#4a85f0',
         outsideArena: 'rgba(0, 0, 0, 0.55)'
     }
 };
