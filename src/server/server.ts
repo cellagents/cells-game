@@ -28,7 +28,6 @@ interface SpectatorEntry {
 const spectators: SpectatorEntry[] = [];
 
 app.use(express.json());
-app.use('/admin', createAdminRouter({ io, map, sockets }));
 const INIT_MASS_LOG = util.mathLog(config.defaultPlayerMass, config.slowBase);
 
 type LeaderboardEntry = { id: string; name: string | null };
@@ -37,7 +36,12 @@ let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
-app.use(express.static(path.join(__dirname, '..', 'client')));
+const clientRoot = path.join(__dirname, '..', 'client');
+app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
+app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
+app.get('/admin', (_req, res) => res.sendFile(path.join(clientRoot, 'admin.html')));
+app.use('/admin', createAdminRouter({ io, map, sockets }));
+app.use(express.static(clientRoot));
 
 io.on('connection', (socket: Socket) => {
     const type = socket.handshake.query.type;
