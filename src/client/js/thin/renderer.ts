@@ -1,11 +1,24 @@
 // Canvas renderer shared by spectator, follow and player modes. Draws cells,
 // food, viruses and mass food from the serverTellPlayerMove payload shape.
-// Keeps zero state beyond the canvas and the last snapshot handed in via
-// draw(); mode-specific camera logic lives in the caller.
+// Keeps zero state beyond the canvas, the current theme palette, and the
+// last snapshot handed in via draw(); mode-specific camera logic lives in
+// the caller.
 
 import type { Camera, WorldSize } from './camera';
 
 const FOOD_RADIUS = 10;
+
+export interface RendererPalette {
+    /** Canvas background. */
+    background: string;
+    /** World-boundary stroke; also used as the arena-edge accent. */
+    boundary: string;
+}
+
+const DEFAULT_PALETTE: RendererPalette = {
+    background: '#0f1419',
+    boundary: '#4a85f0'
+};
 
 export interface Snapshot {
     self?: { id: string; x: number; y: number; massTotal: number; hue: number; cells: Array<{ x: number; y: number; radius: number }> } | null;
@@ -19,11 +32,17 @@ export class Renderer {
     canvas: HTMLCanvasElement;
     ctx: CanvasRenderingContext2D;
     world: WorldSize;
+    palette: RendererPalette;
 
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(canvas: HTMLCanvasElement, palette: RendererPalette = DEFAULT_PALETTE) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
         this.world = { width: 5000, height: 5000 };
+        this.palette = palette;
+    }
+
+    setPalette(palette: RendererPalette): void {
+        this.palette = palette;
     }
 
     setWorld(size: WorldSize): void {
@@ -40,7 +59,7 @@ export class Renderer {
     draw(snapshot: Snapshot, camera: Camera): void {
         const { ctx, canvas } = this;
         ctx.save();
-        ctx.fillStyle = '#111';
+        ctx.fillStyle = this.palette.background;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         const toScreen = (x: number, y: number) => ({
@@ -49,7 +68,7 @@ export class Renderer {
         });
 
         // World boundary
-        ctx.strokeStyle = '#444';
+        ctx.strokeStyle = this.palette.boundary;
         ctx.lineWidth = 2;
         const tl = toScreen(0, 0);
         ctx.strokeRect(tl.x, tl.y, this.world.width * camera.scale, this.world.height * camera.scale);
