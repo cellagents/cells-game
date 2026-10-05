@@ -3,9 +3,24 @@ import * as render from './render';
 import ChatClient from './chat-client';
 import Canvas from './canvas';
 import global from './global';
-import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
 
-applyTheme(currentTheme());
+// Keep the canvas state in sync with the theme. The CSS swap and the
+// canvas swap must move together or the dark-mode click leaves grid and
+// background stuck on the light defaults.
+onThemeChange((_t, colors) => {
+    global.backgroundColor = colors.background;
+    global.lineColor = colors.grid;
+    global.borderColor = colors.border;
+    global.outsideArenaColor = colors.outsideArena;
+});
+const initialTheme = currentTheme();
+const initialColors = canvasColorsFor(initialTheme);
+global.backgroundColor = initialColors.background;
+global.lineColor = initialColors.grid;
+global.borderColor = initialColors.border;
+global.outsideArenaColor = initialColors.outsideArena;
+applyTheme(initialTheme);
 const themeBtn = document.getElementById('themeToggle');
 if (themeBtn) attachThemeToggle(themeBtn);
 
@@ -319,6 +334,15 @@ function gameLoop(): void {
         graph.fillRect(0, 0, global.screen.width, global.screen.height);
 
         render.drawGrid(global, player, global.screen, graph);
+        // Mute the area beyond the playfield so the arena edge is visible
+        // even when the user hasn't opted into drawBorder.
+        const arenaBorders = {
+            left: global.screen.width / 2 - player.x,
+            right: global.screen.width / 2 + global.game.width - player.x,
+            top: global.screen.height / 2 - player.y,
+            bottom: global.screen.height / 2 + global.game.height - player.y
+        };
+        render.drawOutsideArena(arenaBorders, global.outsideArenaColor, global.screen, graph);
         foods.forEach(food => {
             const position = getPosition(food, player, global.screen);
             render.drawFood(position, food, graph);
@@ -332,14 +356,9 @@ function gameLoop(): void {
             render.drawVirus(position, virus, graph);
         });
 
-        const borders = {
-            left: global.screen.width / 2 - player.x,
-            right: global.screen.width / 2 + global.game.width - player.x,
-            top: global.screen.height / 2 - player.y,
-            bottom: global.screen.height / 2 + global.game.height - player.y
-        };
+        const borders = arenaBorders;
         if (global.borderDraw) {
-            render.drawBorder(borders, graph);
+            render.drawBorder(borders, global.borderColor, graph);
         }
 
         const cellsToDraw: any[] = [];

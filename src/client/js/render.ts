@@ -149,9 +149,42 @@ const drawGrid = (global: { lineColor: string }, player: Position, screen: { wid
     graph.globalAlpha = 1;
 };
 
-const drawBorder = (borders: Borders, graph: Ctx): void => {
+// Shade the four screen-space strips outside the arena so the edge of
+// the playfield is obvious even when the "show border" setting is off.
+// Called after the grid is drawn so the grid lines outside the arena
+// are visually muted together with the background.
+const drawOutsideArena = (
+    borders: Borders,
+    color: string,
+    screen: { width: number; height: number },
+    graph: Ctx
+): void => {
+    graph.fillStyle = color;
+    // Top strip
+    if (borders.top > 0) {
+        graph.fillRect(0, 0, screen.width, borders.top);
+    }
+    // Bottom strip
+    if (borders.bottom < screen.height) {
+        graph.fillRect(0, borders.bottom, screen.width, screen.height - borders.bottom);
+    }
+    // Left strip (between top and bottom of arena)
+    if (borders.left > 0) {
+        const t = Math.max(0, borders.top);
+        const b = Math.min(screen.height, borders.bottom);
+        if (b > t) graph.fillRect(0, t, borders.left, b - t);
+    }
+    // Right strip
+    if (borders.right < screen.width) {
+        const t = Math.max(0, borders.top);
+        const b = Math.min(screen.height, borders.bottom);
+        if (b > t) graph.fillRect(borders.right, t, screen.width - borders.right, b - t);
+    }
+};
+
+const drawBorder = (borders: Borders, color: string, graph: Ctx): void => {
     graph.lineWidth = 1;
-    graph.strokeStyle = '#000000';
+    graph.strokeStyle = color;
     graph.beginPath();
     graph.moveTo(borders.left, borders.top);
     graph.lineTo(borders.right, borders.top);
@@ -171,6 +204,7 @@ const drawErrorMessage = (message: string, graph: Ctx, screen: { width: number; 
 };
 
 export {
+    drawOutsideArena,
     drawFood,
     drawVirus,
     drawFireFood,

@@ -113,15 +113,9 @@ class ChatClient {
     toggleDarkMode(): void {
         const next = cycleTheme();
         applyTheme(next);
+        // Canvas colors are updated by the onThemeChange subscriber wired
+        // in app.ts; no need to touch global.backgroundColor etc. here.
         this.addSystemLine(next === 'dark' ? 'Dark mode enabled.' : 'Dark mode disabled.');
-        // Keep the legacy global values the canvas renderer reads in sync.
-        if (next === 'dark') {
-            global.backgroundColor = '#181818';
-            global.lineColor = '#ffffff';
-        } else {
-            global.backgroundColor = '#f2fbff';
-            global.lineColor = '#000000';
-        }
     }
 
     toggleBorder(): void {
