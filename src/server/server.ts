@@ -19,7 +19,13 @@ const io = new SocketIOServer(server);
 const map = new GameMap(config);
 
 const sockets: Record<string, Socket> = {};
-const spectators: string[] = [];
+
+interface SpectatorEntry {
+    socketId: string;
+    mode: 'full' | 'viewport';
+    follow: string | null;
+}
+const spectators: SpectatorEntry[] = [];
 
 app.use(express.json());
 app.use('/admin', createAdminRouter({ io, map, sockets }));
@@ -151,11 +157,27 @@ const addPlayer = (socket: Socket) => {
     });
 };
 
+function parseSpectatorQuery(socket: Socket): { mode: 'full' | 'viewport'; follow: string | null } {
+    const dataParam = socket.handshake.query.data;
+    const followParam = socket.handshake.query.follow;
+    const mode = (typeof dataParam === 'string' && dataParam === 'viewport') ? 'viewport' : 'full';
+    const follow = (typeof followParam === 'string' && followParam.length > 0) ? followParam : null;
+    return { mode, follow };
+}
+
 const addSpectator = (socket: Socket) => {
+    const { mode, follow } = parseSpectatorQuery(socket);
+
     socket.on('gotit', () => {
         sockets[socket.id] = socket;
-        spectators.push(socket.id);
+        spectators.push({ socketId: socket.id, mode, follow });
         io.emit('playerJoin', { name: '' });
+    });
+
+    socket.on('disconnect', () => {
+        const idx = spectators.findIndex((s) => s.socketId === socket.id);
+        if (idx > -1) spectators.splice(idx, 1);
+        delete sockets[socket.id];
     });
 
     socket.emit("welcome", {}, {
@@ -278,20 +300,60 @@ const sendLeaderboard = (socket: Socket) => {
     });
 };
 
-const updateSpectator = (socketID: string) => {
+const updateSpectator = (spectator: SpectatorEntry) => {
+    const socket = sockets[spectator.socketId];
+    if (!socket) return;
+
+    if (spectator.mode === 'viewport' && spectator.follow) {
+        const target = map.players.data.find((p) => p.id === spectator.follow);
+        if (target && target.screenWidth && target.screenHeight) {
+            const halfW = target.screenWidth / 2;
+            const halfH = target.screenHeight / 2;
+            const inView = (e: { x: number; y: number; radius: number }): boolean => {
+                return util.testRectangleRectangle(
+                    e.x, e.y, e.radius * 1.1, e.radius * 1.1,
+                    target.x, target.y, halfW, halfH
+                );
+            };
+            const visibleFood = map.food.data.filter(inView);
+            const visibleViruses = map.viruses.data.filter(inView);
+            const visibleMass = map.massFood.data.filter(inView);
+            const visiblePlayers = map.players.data
+                .filter((p) => p.cells.some((c) => inView(c)))
+                .map((p) => ({
+                    x: p.x, y: p.y, cells: p.cells,
+                    massTotal: Math.round(p.massTotal),
+                    hue: p.hue, id: p.id, name: p.name
+                }));
+            const playerData = {
+                x: target.x, y: target.y,
+                cells: target.cells,
+                massTotal: Math.round(target.massTotal),
+                hue: target.hue,
+                id: spectator.socketId,
+                name: ''
+            };
+            socket.emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
+            if (leaderboardChanged) sendLeaderboard(socket);
+            return;
+        }
+        // Followed player gone (or has no screen bounds yet) -> fall through
+        // to full-map rendering so the viewer sees something instead of a
+        // frozen frame.
+    }
+
+    // Full-map mode (or viewport fallback).
     const playerData = {
         x: config.gameWidth / 2,
         y: config.gameHeight / 2,
         cells: [],
         massTotal: 0,
         hue: 100,
-        id: socketID,
+        id: spectator.socketId,
         name: ''
     };
-    sockets[socketID].emit('serverTellPlayerMove', playerData, map.players.data, map.food.data, map.massFood.data, map.viruses.data);
-    if (leaderboardChanged) {
-        sendLeaderboard(sockets[socketID]);
-    }
+    socket.emit('serverTellPlayerMove', playerData, map.players.data, map.food.data, map.massFood.data, map.viruses.data);
+    if (leaderboardChanged) sendLeaderboard(socket);
 };
 
 setInterval(tickGame, 1000 / 60);
