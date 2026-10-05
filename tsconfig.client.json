@@ -5,7 +5,8 @@
         "moduleResolution": "bundler",
         "target": "ES2020",
         "lib": ["ES2020", "DOM"],
-        "noEmit": true,
+        "noEmit": false,
+        "noEmitOnError": false,
         "types": []
     },
     "include": ["src/client/**/*"]

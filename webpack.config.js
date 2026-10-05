@@ -3,8 +3,11 @@ const path = require('node:path');
 module.exports = (_env, argv) => {
     const isProduction = (argv && argv.mode) === 'production';
     return {
-        entry: './src/client/js/app.js',
+        entry: './src/client/js/app.ts',
         mode: isProduction ? 'production' : 'development',
+        resolve: {
+            extensions: ['.ts', '.js']
+        },
         output: {
             path: path.resolve(__dirname, 'bin/client/js'),
             library: 'app',
@@ -12,16 +15,17 @@ module.exports = (_env, argv) => {
         },
         devtool: false,
         module: {
-            rules: isProduction ? [{
-                test: /\.(?:js|mjs|cjs)$/,
+            rules: [{
+                test: /\.ts$/,
                 exclude: /node_modules/,
                 use: {
-                    loader: 'babel-loader',
+                    loader: 'ts-loader',
                     options: {
-                        presets: [['@babel/preset-env', { targets: 'defaults' }]]
+                        configFile: 'tsconfig.client.json',
+                        transpileOnly: !isProduction
                     }
                 }
-            }] : []
+            }]
         }
     };
 };
