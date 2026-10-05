@@ -1,6 +1,6 @@
-const db = require("../sql.js");
+import db from '../sql';
 
-const logFailedLoginAttempt = async (username, ipAddress) => {
+export async function logFailedLoginAttempt(username: string, ipAddress: string | undefined): Promise<void> {
     return new Promise((resolve) => {
         db.run(
             "INSERT INTO failed_login_attempts (username, ip_address) VALUES (?, ?)",
@@ -11,8 +11,6 @@ const logFailedLoginAttempt = async (username, ipAddress) => {
             }
         );
     });
-};
+}
 
-module.exports = {
-    logFailedLoginAttempt,
-};
+module.exports = { logFailedLoginAttempt };

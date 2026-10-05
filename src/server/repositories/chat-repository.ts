@@ -1,6 +1,6 @@
-const db = require("../sql.js");
+import db from '../sql';
 
-const logChatMessage = async (username, message, ipAddress) => {
+export async function logChatMessage(username: string, message: string, ipAddress: string | undefined): Promise<void> {
     const timestamp = new Date().getTime();
 
     return new Promise((resolve) => {
@@ -13,8 +13,6 @@ const logChatMessage = async (username, message, ipAddress) => {
             }
         );
     });
-};
+}
 
-module.exports = {
-    logChatMessage,
-};
+module.exports = { logChatMessage };
