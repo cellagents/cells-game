@@ -2,15 +2,15 @@
   "name": "agar.io-clone",
   "version": "1.0.0",
   "description": "A simple Agar.io clone",
-  "main": "server/server.js",
+  "main": "bin/server/server.js",
   "scripts": {
     "clean": "rm -rf bin",
     "build": "npm run clean && node scripts/build.mjs && webpack --mode production",
     "build:dev": "npm run clean && node scripts/build.mjs && webpack --mode development",
     "start": "npm run build && node bin/server/server.js",
     "watch": "npm run build:dev && node --watch --watch-path=src bin/server/server.js",
-    "test": "mocha test/**/*.js",
-    "lint": "eslint \"src/**/*.js\""
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "mocha test/**/*.js"
   },
   "repository": {
     "type": "git",
@@ -58,8 +58,6 @@
     "@types/sat": "^0.0.32",
     "@types/uuid": "^10.0.0",
     "chai": "^4.5.0",
-    "eslint": "^10.12.0",
-    "globals": "^15.14.0",
     "mocha": "^12.0.3",
     "ts-loader": "^9.6.2",
     "tsx": "^4.23.15",
