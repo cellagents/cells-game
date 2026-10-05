@@ -89,7 +89,9 @@ export function createAdminRouter(deps: AdminDeps): Router {
             res.status(400).json({ error: 'message required' });
             return;
         }
-        deps.io.emit('serverMSG', message);
+        // Admin broadcasts appear in every chat as a message from the
+        // reserved sender "ADMIN"; clients render that sender in bold.
+        deps.io.emit('serverSendPlayerChat', { sender: 'ADMIN', message });
         console.log('[ADMIN] HTTP broadcast: ' + message);
         res.json({ ok: true });
     });
