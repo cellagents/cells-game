@@ -19,24 +19,14 @@ const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CR
     } else {
         console.log('Connected to the SQLite database.');
 
-        db.serialize(() => {
-            db.run(`CREATE TABLE IF NOT EXISTS failed_login_attempts (
-                username TEXT,
-                ip_address TEXT
-            )`, (err) => {
-                if (err) console.error(err);
-                else console.log("Created failed_login_attempts table");
-            });
-
-            db.run(`CREATE TABLE IF NOT EXISTS chat_messages (
-                username TEXT,
-                message TEXT,
-                ip_address TEXT,
-                timestamp INTEGER
-            )`, (err) => {
-                if (err) console.error(err);
-                else console.log("Created chat_messages table");
-            });
+        db.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+            username TEXT,
+            message TEXT,
+            ip_address TEXT,
+            timestamp INTEGER
+        )`, (err) => {
+            if (err) console.error(err);
+            else console.log("Created chat_messages table");
         });
     }
 });
