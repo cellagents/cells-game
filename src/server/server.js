@@ -212,7 +212,8 @@ const addSpectator = (socket) => {
 }
 
 const tickPlayer = (currentPlayer) => {
-    if (currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
+    if (config.maxHeartbeatInterval > 0 &&
+        currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
         sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.');
         sockets[currentPlayer.id].disconnect();
     }
@@ -347,7 +348,4 @@ setInterval(tickGame, 1000 / 60);
 setInterval(gameloop, 1000);
 setInterval(sendUpdates, 1000 / config.networkUpdateFactor);
 
-// Don't touch, IP configurations.
-var ipaddress = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || config.host;
-var serverport = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || config.port;
-http.listen(serverport, ipaddress, () => console.log('[DEBUG] Listening on ' + ipaddress + ':' + serverport));
+http.listen(config.port, config.host, () => console.log('[DEBUG] Listening on ' + config.host + ':' + config.port));
