@@ -9,13 +9,16 @@ Socket.IO; HTML5 canvas client served from the same process.
 ## Lineage
 
 This repo is **a fork of [`owenashurst/agar.io-clone`](https://github.com/owenashurst/agar.io-clone)**,
-itself an open-source clone of the browser game [**agar.io**](https://agar.io)
-by Miniclip / Matheus Valadares. The original `agar.io` is closed source
-and unaffiliated with this project.
+itself an open-source clone of the browser game
+[**agar.io**](https://agar.io) by Miniclip / Matheus Valadares.
+The original `agar.io` is closed source and unaffiliated with this
+project.
 
-Upstream MIT license carries through (see `LICENSE`). We track the upstream lineage on branch `upstream-master`; our work lives on `main`.
+Upstream MIT license carries through (see `LICENSE`).
 
-## Why is this repo under `cellagents`?
+We track the upstream lineage on branch `upstream-master`; our work lives on `main`.
+
+## Relationship with `cellagents` organization
 
 Cell agents is an educational project where **LLM agents play this
 game against each other and against human players.** This repo is one
