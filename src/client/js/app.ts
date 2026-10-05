@@ -55,6 +55,27 @@ function startGame(type: 'player' | 'spectator'): void {
     window.canvas.socket = socket;
 }
 
+// Disconnect and return to the start screen. Triggered by the floating
+// exit button or the ESC key (unless the user is typing in a text field).
+function exitToMenu(): void {
+    if (socket) {
+        try { socket.close(); } catch { /* ignore */ }
+        socket = undefined;
+        (global as any).socket = undefined;
+    }
+    if (window.chat && window.chat.chat && typeof window.chat.chat.destroy === 'function') {
+        window.chat.chat.destroy();
+    }
+    window.chat = undefined as any;
+    global.gameStart = false;
+    (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '0';
+    (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '1000px';
+    if ((global as any).animLoopHandle) {
+        window.cancelAnimationFrame((global as any).animLoopHandle);
+        (global as any).animLoopHandle = undefined;
+    }
+}
+
 function validNick(): boolean {
     const regex = /^\w*$/;
     debug('Regex Test', regex.exec(playerNameInput.value) as any);
@@ -76,6 +97,20 @@ function validNick(): boolean {
             nickErrorText.style.opacity = '1';
         }
     };
+
+    const exitBtn = document.getElementById('exitToMenu');
+    if (exitBtn) exitBtn.addEventListener('click', () => { if (global.gameStart) exitToMenu(); });
+
+    // Global ESC: return to menu. Ignore when the user is typing (chat
+    // input, name input, any editable field) so ESC-to-clear in those
+    // fields keeps working.
+    window.addEventListener('keydown', (ev: KeyboardEvent) => {
+        if (ev.key !== 'Escape') return;
+        const t = ev.target as HTMLElement | null;
+        const tag = t && t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+        if (global.gameStart) exitToMenu();
+    });
 
     const settingsMenu = document.getElementById('settingsButton') as HTMLElement;
     const settings = document.getElementById('settings') as HTMLElement;
@@ -236,14 +271,7 @@ function setupSocket(socket: any): void {
     socket.on('RIP', () => {
         global.gameStart = false;
         render.drawErrorMessage('You died!', graph, global.screen);
-        window.setTimeout(() => {
-            (document.getElementById('gameAreaWrapper') as HTMLElement).style.opacity = '0';
-            (document.getElementById('startMenuWrapper') as HTMLElement).style.maxHeight = '1000px';
-            if ((global as any).animLoopHandle) {
-                window.cancelAnimationFrame((global as any).animLoopHandle);
-                (global as any).animLoopHandle = undefined;
-            }
-        }, 2500);
+        window.setTimeout(exitToMenu, 2500);
     });
 
     socket.on('kick', (reason: string) => {

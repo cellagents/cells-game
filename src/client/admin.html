@@ -6,7 +6,8 @@
   <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+  <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+  <button id="btn-logout-icon" class="floating-btn lock-btn" type="button" aria-label="Lock dashboard" title="Lock (Esc)" hidden>🔒</button>
 
   <section id="login-view" class="menu-wrapper" hidden>
     <div class="menu-card">
@@ -23,7 +24,6 @@
     <header class="admin-header">
       <span class="admin-title">Server admin</span>
       <span class="session-meta">Session expires <code id="session-expiry">-</code></span>
-      <button id="btn-logout" class="menu-button menu-button-sm">Lock</button>
     </header>
 
     <div class="admin-grid">
