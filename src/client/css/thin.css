@@ -37,19 +37,22 @@ html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: 
 .admin-page pre { background: #000; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px; }
 .player-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #333; }
 
-/* Login view: center a narrow card vertically and horizontally. */
+/* Login view: center a narrow card vertically and horizontally. Stack
+   children with generous breathing room. */
 #login-view {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 28px;
   padding: 30px;
   box-sizing: border-box;
 }
-#login-view form { width: 100%; max-width: 420px; }
-#login-view h1 { text-align: center; width: 100%; max-width: 420px; }
-#login-view #login-status { width: 100%; max-width: 420px; }
+#login-view > * { width: 100%; max-width: 420px; margin: 0; }
+#login-view h1 { text-align: center; }
+#login-view form { display: flex; flex-direction: column; gap: 20px; }
+#login-view form .row { margin-bottom: 0; }
 
 /* Dashboard: three-column grid that collapses to one when a column would
    be narrower than ~320px. The grid lives inside admin-view; the header
@@ -74,3 +77,21 @@ html, body { margin: 0; padding: 0; background: #111; color: #eee; font-family: 
   min-width: 0; /* allow pre/code inside to shrink and scroll instead of stretching the column */
 }
 .admin-panel pre { max-height: 60vh; }
+
+/* Server log panel: scrollable list with newest at the top. */
+.log-list {
+  list-style: none; margin: 0; padding: 0;
+  max-height: 60vh; overflow: auto;
+  font-size: 13px;
+}
+.log-list li {
+  padding: 6px 8px; border-bottom: 1px solid #222;
+}
+.log-list li:last-child { border-bottom: 0; }
+.log-list .log-ts { color: #777; font-size: 11px; margin-right: 8px; }
+.log-list .log-system { color: #9cf; }
+.log-list .log-chat { color: #eee; }
+.log-list .log-join { color: #9eff6a; }
+.log-list .log-leave { color: #ffb86a; }
+.log-list .log-death { color: #ff8aa0; }
+.log-placeholder { opacity: 0.5; font-style: italic; }
