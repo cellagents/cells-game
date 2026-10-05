@@ -243,7 +243,7 @@ const tickPlayer = (currentPlayer: Player) => {
 
         if (eatenVirusIndexes.length > 0) {
             cellsToSplit.push(cellIndex);
-            map.viruses.delete(eatenVirusIndexes as unknown as number);
+            map.viruses.delete(eatenVirusIndexes);
         }
 
         let massGained = eatenMassIndexes.reduce((acc, index) => acc + map.massFood.data[index].mass, 0);
