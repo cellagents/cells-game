@@ -51,10 +51,13 @@ const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', fol
 // tick between game.disconnect() and page unload.
 let leaving = false;
 function leaveToLobby(): void {
-    if (leaving) return;
+    // No re-entry guard here: if the browser swallows the navigation
+    // for whatever reason (focused element, event-handling quirk), the
+    // user hitting ESC or the × button again must try again, not get
+    // silently trapped by a flag we set on the first attempt.
     leaving = true;
     try { game.disconnect(); } catch { /* ignore */ }
-    window.location.assign('/');
+    window.location.href = '/';
 }
 
 // Managed mode: embedded in a parent surface (harness panel) that
