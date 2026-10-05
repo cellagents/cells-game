@@ -53,13 +53,10 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
     "@types/sat": "^0.0.32",
     "@types/uuid": "^10.0.0",
-    "babel-loader": "^9.2.1",
     "chai": "^4.5.0",
     "eslint": "^10.12.0",
     "globals": "^15.14.0",
