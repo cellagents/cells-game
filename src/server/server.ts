@@ -1,35 +1,37 @@
-/*jslint bitwise: true, node: true */
-'use strict';
+import express from 'express';
+import * as http from 'http';
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import * as SAT from 'sat';
+import * as path from 'path';
 
-const express = require('express');
+import * as loggingRepository from './repositories/logging-repository';
+import * as chatRepository from './repositories/chat-repository';
+import config from '../config';
+import * as util from './lib/util';
+import { Map as GameMap, playerUtils } from './map/map';
+import { Player } from './map/player';
+import { getPosition } from './lib/entityUtils';
+
 const app = express();
-const http = require('http').Server(app);
-const io = require('socket.io')(http);
-const SAT = require('sat');
+const server = http.createServer(app);
+const io = new SocketIOServer(server);
 
-const gameLogic = require('./game-logic');
-const loggingRepositry = require('./repositories/logging-repository');
-const chatRepository = require('./repositories/chat-repository');
-const config = require('../config');
-const util = require('./lib/util');
-const mapUtils = require('./map/map');
-const {getPosition} = require("./lib/entityUtils");
+const map = new GameMap(config);
 
-let map = new mapUtils.Map(config);
-
-let sockets = {};
-let spectators = [];
+const sockets: Record<string, Socket> = {};
+const spectators: string[] = [];
 const INIT_MASS_LOG = util.mathLog(config.defaultPlayerMass, config.slowBase);
 
-let leaderboard = [];
+type LeaderboardEntry = { id: string; name: string | null };
+let leaderboard: LeaderboardEntry[] = [];
 let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
-app.use(express.static(__dirname + '/../client'));
+app.use(express.static(path.join(__dirname, '..', 'client')));
 
-io.on('connection', function (socket) {
-    let type = socket.handshake.query.type;
+io.on('connection', (socket: Socket) => {
+    const type = socket.handshake.query.type;
     console.log('User has connected: ', type);
     switch (type) {
         case 'player':
@@ -44,15 +46,20 @@ io.on('connection', function (socket) {
 });
 
 function generateSpawnpoint() {
-    let radius = util.massToRadius(config.defaultPlayerMass);
-    return getPosition(config.newPlayerInitialPosition === 'farthest', radius, map.players.data)
+    const radius = util.massToRadius(config.defaultPlayerMass);
+    return getPosition(config.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
 }
 
+interface ClientPlayerData {
+    name: string;
+    screenWidth: number;
+    screenHeight: number;
+}
 
-const addPlayer = (socket) => {
-    var currentPlayer = new mapUtils.playerUtils.Player(socket.id);
+const addPlayer = (socket: Socket) => {
+    const currentPlayer = new playerUtils.Player(socket.id);
 
-    socket.on('gotit', function (clientPlayerData) {
+    socket.on('gotit', (clientPlayerData: ClientPlayerData) => {
         console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
         currentPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
 
@@ -74,14 +81,13 @@ const addPlayer = (socket) => {
             io.emit('playerJoin', { name: currentPlayer.name });
             console.log('Total players: ' + map.players.data.length);
         }
-
     });
 
     socket.on('pingcheck', () => {
         socket.emit('pongcheck');
     });
 
-    socket.on('windowResized', (data) => {
+    socket.on('windowResized', (data: { screenWidth: number; screenHeight: number }) => {
         currentPlayer.screenWidth = data.screenWidth;
         currentPlayer.screenHeight = data.screenHeight;
     });
@@ -101,9 +107,9 @@ const addPlayer = (socket) => {
         socket.broadcast.emit('playerDisconnect', { name: currentPlayer.name });
     });
 
-    socket.on('playerChat', (data) => {
-        var _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
-        var _message = data.message.replace(/(<([^>]+)>)/ig, '');
+    socket.on('playerChat', (data: { sender: string; message: string }) => {
+        const _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
+        const _message = data.message.replace(/(<([^>]+)>)/ig, '');
 
         if (config.logChat === 1) {
             console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
@@ -118,7 +124,7 @@ const addPlayer = (socket) => {
             .catch((err) => console.error("Error when attempting to log chat message", err));
     });
 
-    socket.on('pass', async (data) => {
+    socket.on('pass', async (data: string[]) => {
         const password = data[0];
         if (password === config.adminPass) {
             console.log('[ADMIN] ' + currentPlayer.name + ' just logged in as an admin.');
@@ -127,45 +133,41 @@ const addPlayer = (socket) => {
             currentPlayer.admin = true;
         } else {
             console.log('[ADMIN] ' + currentPlayer.name + ' attempted to log in with the incorrect password: ' + password);
-
             socket.emit('serverMSG', 'Password incorrect, attempt logged.');
-
-            loggingRepositry.logFailedLoginAttempt(currentPlayer.name, currentPlayer.ipAddress)
+            loggingRepository.logFailedLoginAttempt(currentPlayer.name ?? '', currentPlayer.ipAddress)
                 .catch((err) => console.error("Error when attempting to log failed login attempt", err));
         }
     });
 
-    socket.on('kick', (data) => {
+    socket.on('kick', (data: string[]) => {
         if (!currentPlayer.admin) {
             socket.emit('serverMSG', 'You are not permitted to use this command.');
             return;
         }
 
-        var reason = '';
-        var worked = false;
-        for (let playerIndex in map.players.data) {
-            let player = map.players.data[playerIndex];
+        let reason = '';
+        let worked = false;
+        for (const playerIndex in map.players.data) {
+            const player = map.players.data[playerIndex];
             if (player.name === data[0] && !player.admin && !worked) {
                 if (data.length > 1) {
-                    for (var f = 1; f < data.length; f++) {
+                    for (let f = 1; f < data.length; f++) {
                         if (f === data.length) {
                             reason = reason + data[f];
-                        }
-                        else {
+                        } else {
                             reason = reason + data[f] + ' ';
                         }
                     }
                 }
                 if (reason !== '') {
                     console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name + ' for reason ' + reason);
-                }
-                else {
+                } else {
                     console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name);
                 }
                 socket.emit('serverMSG', 'User ' + player.name + ' was kicked by ' + currentPlayer.name);
                 sockets[player.id].emit('kick', reason);
                 sockets[player.id].disconnect();
-                map.players.removePlayerByIndex(playerIndex);
+                map.players.removePlayerByIndex(Number(playerIndex));
                 worked = true;
             }
         }
@@ -175,14 +177,14 @@ const addPlayer = (socket) => {
     });
 
     // Heartbeat function, update everytime.
-    socket.on('0', (target) => {
+    socket.on('0', (target: { x: number; y: number }) => {
         currentPlayer.lastHeartbeat = new Date().getTime();
         if (target.x !== currentPlayer.x || target.y !== currentPlayer.y) {
             currentPlayer.target = target;
         }
     });
 
-    socket.on('1', function () {
+    socket.on('1', () => {
         // Fire food.
         const minCellMass = config.defaultPlayerMass + config.fireFood;
         for (let i = 0; i < currentPlayer.cells.length; i++) {
@@ -196,10 +198,10 @@ const addPlayer = (socket) => {
     socket.on('2', () => {
         currentPlayer.userSplit(config.limitSplit, config.defaultPlayerMass);
     });
-}
+};
 
-const addSpectator = (socket) => {
-    socket.on('gotit', function () {
+const addSpectator = (socket: Socket) => {
+    socket.on('gotit', () => {
         sockets[socket.id] = socket;
         spectators.push(socket.id);
         io.emit('playerJoin', { name: '' });
@@ -209,9 +211,9 @@ const addSpectator = (socket) => {
         width: config.gameWidth,
         height: config.gameHeight
     });
-}
+};
 
-const tickPlayer = (currentPlayer) => {
+const tickPlayer = (currentPlayer: Player) => {
     if (config.maxHeartbeatInterval > 0 &&
         currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
         sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.');
@@ -220,29 +222,25 @@ const tickPlayer = (currentPlayer) => {
 
     currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG);
 
-    const isEntityInsideCircle = (point, circle) => {
+    const isEntityInsideCircle = (point: { x: number; y: number }, circle: SAT.Circle): boolean => {
         return SAT.pointInCircle(new Vector(point.x, point.y), circle);
     };
 
-    const canEatMass = (cell, cellCircle, cellIndex, mass) => {
+    const canEatMass = (cell: { mass: number }, cellCircle: SAT.Circle, cellIndex: number, mass: { id: string; speed: number; num: number; mass: number; x: number; y: number }): boolean => {
         if (isEntityInsideCircle(mass, cellCircle)) {
-            if (mass.id === currentPlayer.id && mass.speed > 0 && cellIndex === mass.num)
-                return false;
-            if (cell.mass > mass.mass * 1.1)
-                return true;
+            if (mass.id === currentPlayer.id && mass.speed > 0 && cellIndex === mass.num) return false;
+            if (cell.mass > mass.mass * 1.1) return true;
         }
-
         return false;
     };
 
-    const canEatVirus = (cell, cellCircle, virus) => {
-        return virus.mass < cell.mass && isEntityInsideCircle(virus, cellCircle)
-    }
+    const canEatVirus = (cell: { mass: number }, cellCircle: SAT.Circle, virus: { mass: number; x: number; y: number }): boolean => {
+        return virus.mass < cell.mass && isEntityInsideCircle(virus, cellCircle);
+    };
 
-    const cellsToSplit = [];
+    const cellsToSplit: number[] = [];
     for (let cellIndex = 0; cellIndex < currentPlayer.cells.length; cellIndex++) {
         const currentCell = currentPlayer.cells[cellIndex];
-
         const cellCircle = currentCell.toCircle();
 
         const eatenFoodIndexes = util.getIndexes(map.food.data, food => isEntityInsideCircle(food, cellCircle));
@@ -251,7 +249,7 @@ const tickPlayer = (currentPlayer) => {
 
         if (eatenVirusIndexes.length > 0) {
             cellsToSplit.push(cellIndex);
-            map.viruses.delete(eatenVirusIndexes)
+            map.viruses.delete(eatenVirusIndexes as unknown as number);
         }
 
         let massGained = eatenMassIndexes.reduce((acc, index) => acc + map.massFood.data[index].mass, 0);
@@ -268,20 +266,20 @@ const tickGame = () => {
     map.players.data.forEach(tickPlayer);
     map.massFood.move(config.gameWidth, config.gameHeight);
 
-    map.players.handleCollisions(function (gotEaten, eater) {
+    map.players.handleCollisions((gotEaten, eater) => {
         const cellGotEaten = map.players.getCell(gotEaten.playerIndex, gotEaten.cellIndex);
 
         map.players.data[eater.playerIndex].changeCellMass(eater.cellIndex, cellGotEaten.mass);
 
         const playerDied = map.players.removeCell(gotEaten.playerIndex, gotEaten.cellIndex);
         if (playerDied) {
-            let playerGotEaten = map.players.data[gotEaten.playerIndex];
-            io.emit('playerDied', { name: playerGotEaten.name }); //TODO: on client it is `playerEatenName` instead of `name`
+            const playerGotEaten = map.players.data[gotEaten.playerIndex];
+            // TODO: on client it is `playerEatenName` instead of `name`.
+            io.emit('playerDied', { name: playerGotEaten.name });
             sockets[playerGotEaten.id].emit('RIP');
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
     });
-
 };
 
 const calculateLeaderboard = () => {
@@ -299,7 +297,7 @@ const calculateLeaderboard = () => {
             }
         }
     }
-}
+};
 
 const gameloop = () => {
     if (map.players.data.length > 0) {
@@ -312,7 +310,7 @@ const gameloop = () => {
 
 const sendUpdates = () => {
     spectators.forEach(updateSpectator);
-    map.enumerateWhatPlayersSee(function (playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses) {
+    map.enumerateWhatPlayersSee((playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses) => {
         sockets[playerData.id].emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
         if (leaderboardChanged) {
             sendLeaderboard(sockets[playerData.id]);
@@ -322,14 +320,15 @@ const sendUpdates = () => {
     leaderboardChanged = false;
 };
 
-const sendLeaderboard = (socket) => {
+const sendLeaderboard = (socket: Socket) => {
     socket.emit('leaderboard', {
         players: map.players.data.length,
         leaderboard
     });
-}
-const updateSpectator = (socketID) => {
-    let playerData = {
+};
+
+const updateSpectator = (socketID: string) => {
+    const playerData = {
         x: config.gameWidth / 2,
         y: config.gameHeight / 2,
         cells: [],
@@ -342,10 +341,10 @@ const updateSpectator = (socketID) => {
     if (leaderboardChanged) {
         sendLeaderboard(sockets[socketID]);
     }
-}
+};
 
 setInterval(tickGame, 1000 / 60);
 setInterval(gameloop, 1000);
 setInterval(sendUpdates, 1000 / config.networkUpdateFactor);
 
-http.listen(config.port, config.host, () => console.log('[DEBUG] Listening on ' + config.host + ':' + config.port));
+server.listen(config.port, config.host, () => console.log('[DEBUG] Listening on ' + config.host + ':' + config.port));
