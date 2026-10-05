@@ -63,14 +63,6 @@ class ChatClient {
         this.registerCommand('help', 'Information about the chat commands.', () => {
             self.printHelp();
         });
-
-        this.registerCommand('login', 'Login as an admin.', (args) => {
-            self.socket.emit('pass', args);
-        });
-
-        this.registerCommand('kick', 'Kick a player, for admins only.', (args) => {
-            self.socket.emit('kick', args);
-        });
         (global as any).chatClient = this;
     }
 

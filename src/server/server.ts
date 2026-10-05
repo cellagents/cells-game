@@ -4,7 +4,6 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import * as SAT from 'sat';
 import * as path from 'path';
 
-import * as loggingRepository from './repositories/logging-repository';
 import * as chatRepository from './repositories/chat-repository';
 import config from '../config';
 import * as util from './lib/util';
@@ -126,58 +125,6 @@ const addPlayer = (socket: Socket) => {
 
         chatRepository.logChatMessage(_sender, _message, currentPlayer.ipAddress)
             .catch((err) => console.error("Error when attempting to log chat message", err));
-    });
-
-    socket.on('pass', async (data: string[]) => {
-        const password = data[0];
-        if (password === config.adminPass) {
-            console.log('[ADMIN] ' + currentPlayer.name + ' just logged in as an admin.');
-            socket.emit('serverMSG', 'Welcome back ' + currentPlayer.name);
-            socket.broadcast.emit('serverMSG', currentPlayer.name + ' just logged in as an admin.');
-            currentPlayer.admin = true;
-        } else {
-            console.log('[ADMIN] ' + currentPlayer.name + ' attempted to log in with the incorrect password: ' + password);
-            socket.emit('serverMSG', 'Password incorrect, attempt logged.');
-            loggingRepository.logFailedLoginAttempt(currentPlayer.name ?? '', currentPlayer.ipAddress)
-                .catch((err) => console.error("Error when attempting to log failed login attempt", err));
-        }
-    });
-
-    socket.on('kick', (data: string[]) => {
-        if (!currentPlayer.admin) {
-            socket.emit('serverMSG', 'You are not permitted to use this command.');
-            return;
-        }
-
-        let reason = '';
-        let worked = false;
-        for (const playerIndex in map.players.data) {
-            const player = map.players.data[playerIndex];
-            if (player.name === data[0] && !player.admin && !worked) {
-                if (data.length > 1) {
-                    for (let f = 1; f < data.length; f++) {
-                        if (f === data.length) {
-                            reason = reason + data[f];
-                        } else {
-                            reason = reason + data[f] + ' ';
-                        }
-                    }
-                }
-                if (reason !== '') {
-                    console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name + ' for reason ' + reason);
-                } else {
-                    console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name);
-                }
-                socket.emit('serverMSG', 'User ' + player.name + ' was kicked by ' + currentPlayer.name);
-                sockets[player.id].emit('kick', reason);
-                sockets[player.id].disconnect();
-                map.players.removePlayerByIndex(Number(playerIndex));
-                worked = true;
-            }
-        }
-        if (!worked) {
-            socket.emit('serverMSG', 'Could not locate user or user is an admin.');
-        }
     });
 
     // Heartbeat function, update everytime.

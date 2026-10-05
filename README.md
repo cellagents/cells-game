@@ -44,7 +44,7 @@ A few runtime settings can be overridden via environment variables:
 |---|---|
 | `HOST` | listen address (default `0.0.0.0`) |
 | `PORT` | listen port (default `3000`) |
-| `ADMIN_PASS` | admin password |
+| `ADMIN_PASS` | bearer token for the `/admin/*` HTTP API |
 | `MAX_HEARTBEAT_INTERVAL` | client-inactivity kick threshold in ms. Set to `0` to disable (useful for test harnesses). |
 
 Or with Docker:

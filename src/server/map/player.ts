@@ -105,7 +105,6 @@ export class Player {
     id: string;
     hue: number;
     name: string | null;
-    admin: boolean;
     screenWidth: number | null;
     screenHeight: number | null;
     timeToMerge: number | null;
@@ -121,7 +120,6 @@ export class Player {
         this.id = id;
         this.hue = Math.round(Math.random() * 360);
         this.name = null;
-        this.admin = false;
         this.screenWidth = null;
         this.screenHeight = null;
         this.timeToMerge = null;
