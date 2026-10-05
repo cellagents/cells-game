@@ -101,10 +101,13 @@ window.canvas.socket = socket;
 // don't fire a confusing last-frame while the browser is unloading.
 let leaving = false;
 function leaveToLobby(): void {
-    if (leaving) return;
+    // No re-entry guard here: if the browser swallows the navigation
+    // for whatever reason (focused element, event-handling quirk), the
+    // user hitting ESC or the × button again must try again, not get
+    // silently trapped by a flag we set on the first attempt.
     leaving = true;
     try { socket.close(); } catch { /* ignore */ }
-    window.location.assign('/');
+    window.location.href = '/';
 }
 
 // Floating buttons
