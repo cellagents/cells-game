@@ -10,7 +10,7 @@ import * as util from './lib/util';
 import { Map as GameMap, playerUtils } from './map/map';
 import { Player } from './map/player';
 import { getPosition } from './lib/entityUtils';
-import { createAdminRouter } from './admin';
+import { adminEnabled, createAdminRouter } from './admin';
 
 const app = express();
 const server = http.createServer(app);
@@ -39,8 +39,25 @@ const Vector = SAT.Vector;
 const clientRoot = path.join(__dirname, '..', 'client');
 app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
-app.get('/admin', (_req, res) => res.sendFile(path.join(clientRoot, 'admin.html')));
-app.use('/admin', createAdminRouter({ io, map, sockets }));
+
+if (adminEnabled()) {
+    app.get('/admin', (_req, res) => res.sendFile(path.join(clientRoot, 'admin.html')));
+    app.use('/admin', createAdminRouter({ io, map, sockets }));
+    console.log('[ADMIN] HTTP admin API enabled at /admin');
+} else {
+    // Admin disabled: 404 anything under /admin and the raw admin.html path
+    // so the static middleware below can't serve them. Nothing distinguishes
+    // "admin was never present" from "admin is turned off" to the outside.
+    app.use((req, res, next) => {
+        if (req.path === '/admin' || req.path.startsWith('/admin/') || req.path === '/admin.html') {
+            res.status(404).end();
+            return;
+        }
+        next();
+    });
+    console.log('[ADMIN] disabled (ADMIN_PASS is unset or default)');
+}
+
 app.use(express.static(clientRoot));
 
 io.on('connection', (socket: Socket) => {

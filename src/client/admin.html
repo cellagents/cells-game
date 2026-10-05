@@ -10,10 +10,6 @@
     <h1>Server admin</h1>
     <form id="login-form">
       <div class="row">
-        <label for="login-server">Game server URL</label>
-        <input id="login-server" type="text" placeholder="http://localhost:3000" />
-      </div>
-      <div class="row">
         <label for="login-token">Admin bearer token</label>
         <input id="login-token" type="password" placeholder="ADMIN_PASS value" autofocus />
       </div>
@@ -30,8 +26,7 @@
     </h1>
 
     <div class="row" style="font-size:12px;opacity:0.75">
-      <span>Server: <code id="connected-server"></code></span>
-      <span style="margin-left:12px">Session expires: <code id="session-expiry">-</code></span>
+      <span>Session expires: <code id="session-expiry">-</code></span>
     </div>
 
     <h2>Broadcast message</h2>

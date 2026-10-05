@@ -56,7 +56,7 @@ without editing the file (useful for Docker / CI / test harnesses):
 |---|---|
 | `HOST` | `host` |
 | `PORT` | `port` |
-| `ADMIN_PASS` | `adminPass` (bearer token for the `/admin/*` HTTP API) |
+| `ADMIN_PASS` | `adminPass` (bearer token for the `/admin/*` HTTP API). If unset, empty, or the shipped `"DEFAULT"` placeholder, the admin console is **disabled entirely** and every `/admin*` route returns 404. |
 | `MAX_HEARTBEAT_INTERVAL` | `maxHeartbeatInterval`. Set to `0` to disable the kick entirely. |
 | `CELLAGENTS_GAME_CONFIG` | absolute path to an alternate config file |
 
