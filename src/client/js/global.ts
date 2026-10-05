@@ -24,6 +24,8 @@ export interface ClientGlobal {
     toggleMassState: number;
     backgroundColor: string;
     lineColor: string;
+    borderColor: string;
+    outsideArenaColor: string;
     [key: string]: unknown;
 }
 
@@ -55,6 +57,8 @@ const global: ClientGlobal = {
     toggleMassState: 0,
     backgroundColor: '#f2fbff',
     lineColor: '#000000',
+    borderColor: '#000000',
+    outsideArenaColor: 'rgba(0, 0, 0, 0.18)',
 };
 
 export default global;
