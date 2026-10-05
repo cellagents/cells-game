@@ -37,9 +37,24 @@ export interface Config {
     sqlinfo: SqlInfo;
 }
 
+function envInt(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (raw === undefined || raw === '') return fallback;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        throw new Error(`Environment variable ${name} must be a number, got "${raw}"`);
+    }
+    return parsed;
+}
+
+function envStr(name: string, fallback: string): string {
+    const raw = process.env[name];
+    return raw === undefined || raw === '' ? fallback : raw;
+}
+
 const config: Config = {
-    host: "0.0.0.0",
-    port: 3000,
+    host: envStr('HOST', "0.0.0.0"),
+    port: envInt('PORT', 3000),
     logpath: "logger.php",
     foodMass: 1,
     fireFood: 20,
@@ -58,14 +73,17 @@ const config: Config = {
     },
     gameWidth: 5000,
     gameHeight: 5000,
-    adminPass: "DEFAULT",
+    adminPass: envStr('ADMIN_PASS', "DEFAULT"),
     gameMass: 20000,
     maxFood: 1000,
     maxVirus: 50,
     slowBase: 4.5,
     logChat: 0,
     networkUpdateFactor: 40,
-    maxHeartbeatInterval: 5000,
+    // Set MAX_HEARTBEAT_INTERVAL=0 to disable the server-side kick for
+    // stalled clients (useful for test harnesses and automated agents
+    // that may pause between heartbeats).
+    maxHeartbeatInterval: envInt('MAX_HEARTBEAT_INTERVAL', 5000),
     foodUniformDisposition: true,
     newPlayerInitialPosition: "farthest",
     massLossRate: 1,
