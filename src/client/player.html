@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cells · play</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="css/main.css" />
+    <audio id="split_cell" src="audio/split.mp3"></audio>
+    <audio id="spawn_cell" src="audio/spawn.mp3"></audio>
+</head>
+<body class="player-mode">
+    <!-- Floating button stack, matches /spectator and /follow. Exit
+         sends you back to the lobby; theme toggles light/dark; chat
+         toggle hides/shows the chat overlay. -->
+    <a id="exitToMenu" class="floating-btn exit-btn" href="/" aria-label="Return to menu" title="Return to menu (Esc)">×</a>
+    <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+    <button id="chatToggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat">≡</button>
+
+    <div id="status"><span class="title">Leaderboard</span></div>
+    <div id="chatbox"></div>
+    <div id="mobile">
+        <button id="split" class="control-btn" type="button" aria-label="Split">SPLIT</button>
+        <button id="feed" class="control-btn" type="button" aria-label="Eject">EJECT</button>
+    </div>
+    <canvas tabindex="1" id="cvs"></canvas>
+
+    <script src="js/player.js"></script>
+</body>
+</html>
