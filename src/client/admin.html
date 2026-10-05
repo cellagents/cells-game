@@ -6,29 +6,48 @@
   <link rel="stylesheet" href="css/thin.css" />
 </head>
 <body class="admin-page">
-  <h1>Server admin</h1>
-  <div class="row">
-    <label for="server">Game server URL</label>
-    <input id="server" type="text" placeholder="http://localhost:3000" />
-  </div>
-  <div class="row">
-    <label for="token">Admin bearer token</label>
-    <input id="token" type="password" placeholder="ADMIN_PASS value" />
-  </div>
+  <section id="login-view" hidden>
+    <h1>Server admin</h1>
+    <form id="login-form">
+      <div class="row">
+        <label for="login-server">Game server URL</label>
+        <input id="login-server" type="text" placeholder="http://localhost:3000" />
+      </div>
+      <div class="row">
+        <label for="login-token">Admin bearer token</label>
+        <input id="login-token" type="password" placeholder="ADMIN_PASS value" autofocus />
+      </div>
+      <div class="row">
+        <button type="submit" id="btn-login">Unlock</button>
+      </div>
+    </form>
+    <div id="login-status" class="status" hidden></div>
+  </section>
 
-  <h2>Broadcast message</h2>
-  <div class="row">
-    <input id="broadcast-msg" type="text" placeholder="message to all players" />
-    <button id="btn-broadcast">Send</button>
-  </div>
+  <section id="admin-view" hidden>
+    <h1>Server admin
+      <button id="btn-logout" style="font-size:12px;padding:4px 8px;margin-left:12px">Lock</button>
+    </h1>
 
-  <div id="status" class="status">idle</div>
+    <div class="row" style="font-size:12px;opacity:0.75">
+      <span>Server: <code id="connected-server"></code></span>
+      <span style="margin-left:12px">Session expires: <code id="session-expiry">-</code></span>
+    </div>
 
-  <h2>Players <button id="btn-refresh" style="font-size:12px;padding:4px 8px">refresh</button></h2>
-  <div id="players">loading...</div>
+    <h2>Broadcast message</h2>
+    <div class="row">
+      <input id="broadcast-msg" type="text" placeholder="message to all players" />
+      <button id="btn-broadcast">Send</button>
+    </div>
 
-  <h2>Raw state</h2>
-  <pre id="state">loading...</pre>
+    <div id="status" class="status">idle</div>
+
+    <h2>Players <button id="btn-refresh" style="font-size:12px;padding:4px 8px">refresh</button></h2>
+    <div id="players">loading...</div>
+
+    <h2>Raw state</h2>
+    <pre id="state">loading...</pre>
+  </section>
 
   <script src="js/admin.js"></script>
 </body>
