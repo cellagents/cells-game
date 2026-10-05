@@ -18,7 +18,6 @@ class Canvas {
         this.reenviar = true;
         this.socket = (global as any).socket;
         this.directions = [];
-        const self = this;
 
         this.cv = document.getElementById('cvs') as HTMLCanvasElement & { parent?: Canvas };
         this.cv.width = global.screen.width;
@@ -27,13 +26,13 @@ class Canvas {
         this.cv.addEventListener('mouseout', this.outOfBounds, false);
         this.cv.addEventListener('keypress', this.keyInput, false);
         this.cv.addEventListener('keyup', (event) => {
-            self.reenviar = true;
-            self.directionUp(event as unknown as KeyboardEvent & { parent: Canvas });
+            this.reenviar = true;
+            this.directionUp(event as unknown as KeyboardEvent & { parent: Canvas });
         }, false);
         this.cv.addEventListener('keydown', this.directionDown, false);
         this.cv.addEventListener('touchstart', this.touchInput, false);
         this.cv.addEventListener('touchmove', this.touchInput, false);
-        this.cv.parent = self;
+        this.cv.parent = this;
         (global as any).canvas = this;
     }
 
