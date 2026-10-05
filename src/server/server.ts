@@ -11,6 +11,7 @@ import * as util from './lib/util';
 import { Map as GameMap, playerUtils } from './map/map';
 import { Player } from './map/player';
 import { getPosition } from './lib/entityUtils';
+import { createAdminRouter } from './admin';
 
 const app = express();
 const server = http.createServer(app);
@@ -20,6 +21,9 @@ const map = new GameMap(config);
 
 const sockets: Record<string, Socket> = {};
 const spectators: string[] = [];
+
+app.use(express.json());
+app.use('/admin', createAdminRouter({ io, map, sockets }));
 const INIT_MASS_LOG = util.mathLog(config.defaultPlayerMass, config.slowBase);
 
 type LeaderboardEntry = { id: string; name: string | null };
