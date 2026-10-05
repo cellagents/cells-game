@@ -5,3 +5,6 @@ client/bower_components/
 *.log
 npm-debug.log
 .DS_Store
+# Local, user-managed config. config.example.json is checked in as the
+# fallback / template.
+config.json

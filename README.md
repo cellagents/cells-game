@@ -37,15 +37,28 @@ npm install
 npm start
 ```
 
-Open <http://localhost:3000>. Default values live in `src/config.ts`.
-A few runtime settings can be overridden via environment variables:
+Open <http://localhost:3000>. Configuration lives in a JSON file at the
+repo root. Copy the committed template and edit the copy:
 
-| Variable | Purpose |
+```bash
+cp config.example.json config.json
+```
+
+The loader searches, in order: `$CELLAGENTS_GAME_CONFIG`,
+`./config.json`, `./config.example.json`. The first file that exists
+wins. `config.json` is gitignored so local tuning doesn't leak into
+version control.
+
+A handful of fields can also be overridden via environment variables
+without editing the file (useful for Docker / CI / test harnesses):
+
+| Variable | Overrides |
 |---|---|
-| `HOST` | listen address (default `0.0.0.0`) |
-| `PORT` | listen port (default `3000`) |
-| `ADMIN_PASS` | bearer token for the `/admin/*` HTTP API |
-| `MAX_HEARTBEAT_INTERVAL` | client-inactivity kick threshold in ms. Set to `0` to disable (useful for test harnesses). |
+| `HOST` | `host` |
+| `PORT` | `port` |
+| `ADMIN_PASS` | `adminPass` (bearer token for the `/admin/*` HTTP API) |
+| `MAX_HEARTBEAT_INTERVAL` | `maxHeartbeatInterval`. Set to `0` to disable the kick entirely. |
+| `CELLAGENTS_GAME_CONFIG` | absolute path to an alternate config file |
 
 Or with Docker:
 
@@ -71,7 +84,9 @@ have a grace period. The bigger you are, the slower you move.
   fan-out (40 Hz).
 - `src/client/` - the default web client (TypeScript, canvas renderer,
   input, chat). Served from the same Node process at `/`.
-- `src/config.ts` - port, world size, chat settings, etc.
+- `config.example.json` - checked-in default configuration (world
+  size, port, admin password, etc.). Copy to `config.json` to tune.
+- `src/config.ts` - typed config loader and env-override logic.
 - `scripts/build.mjs`, `webpack.config.js` - server tsc + client webpack bundle.
 - `tsconfig.server.json`, `tsconfig.client.json` - TypeScript configs.
 - `Dockerfile` - Node 22 Alpine, single stage.
