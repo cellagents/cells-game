@@ -1,38 +1,50 @@
 {
-    "host": "0.0.0.0",
-    "port": 3000,
-    "foodMass": 1,
-    "fireFood": 20,
-    "limitSplit": 16,
-    "defaultPlayerMass": 10,
-    "virus": {
-        "fill": "#33ff33",
-        "stroke": "#19D119",
-        "strokeWidth": 20,
-        "defaultMass": {
-            "from": 100,
-            "to": 150
+    "server": {
+        "host": "0.0.0.0",
+        "port": 3000,
+        "loopRates": {
+            "physicsHz": 60,
+            "metabolismHz": 1,
+            "fanOutHz": 40
         },
-        "splitMass": 180,
-        "uniformDisposition": false
+        "maxHeartbeatInterval": 5000,
+        "logChat": false,
+        "dbFileName": "db.sqlite3"
     },
-    "gameWidth": 5000,
-    "gameHeight": 5000,
-    "adminPass": "DEFAULT",
-    "gameMass": 20000,
-    "maxFood": 1000,
-    "maxVirus": 50,
-    "slowBase": 4.5,
-    "logChat": false,
-    "networkUpdateFactor": 40,
-    "maxHeartbeatInterval": 5000,
-    "foodUniformDisposition": true,
-    "newPlayerInitialPosition": "farthest",
-    "massLossRate": 1,
-    "minMassLoss": 50,
-    "dbFileName": "db.sqlite3",
-    "lobby": {
-        "gui": {
+    "game": {
+        "width": 5000,
+        "height": 5000,
+        "mass": 20000,
+        "maxFood": 1000,
+        "foodMass": 1,
+        "foodUniformDisposition": true,
+        "maxVirus": 50,
+        "virus": {
+            "fill": "#33ff33",
+            "stroke": "#19D119",
+            "strokeWidth": 20,
+            "defaultMass": {
+                "from": 100,
+                "to": 150
+            },
+            "splitMass": 180,
+            "uniformDisposition": false
+        },
+        "slowBase": 4.5,
+        "massLossRate": 1,
+        "minMassLoss": 50,
+        "defaultPlayerMass": 10,
+        "limitSplit": 16,
+        "fireFood": 20,
+        "newPlayerInitialPosition": "farthest"
+    },
+    "client": {
+        "theme": {},
+        "admin": {
+            "pass": "DEFAULT"
+        },
+        "follow": {},
+        "lobby": {
             "buttonsBefore": [],
             "buttonsAfter": [
                 {
@@ -44,6 +56,8 @@
                     "href": "https://cellagents.dev/about"
                 }
             ]
-        }
+        },
+        "player": {},
+        "spectator": {}
     }
 }

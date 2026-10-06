@@ -19,14 +19,14 @@ export interface AdminDeps {
 // is treated as unset so a fresh deployment that forgot to set ADMIN_PASS
 // doesn't accidentally expose admin with the shipped value.
 export function adminEnabled(): boolean {
-    const pw = config.adminPass;
+    const pw = config.client.admin.pass;
     return typeof pw === 'string' && pw.length > 0 && pw !== 'DEFAULT';
 }
 
 function bearerAuth(req: Request, res: Response, next: NextFunction): void {
     const header = req.header('authorization') ?? '';
     const match = /^Bearer (.+)$/.exec(header);
-    if (!match || match[1] !== config.adminPass) {
+    if (!match || match[1] !== config.client.admin.pass) {
         res.status(401).json({ error: 'unauthorized' });
         return;
     }
@@ -52,11 +52,11 @@ export function createAdminRouter(deps: AdminDeps): Router {
                 massFood: deps.map.massFood.data.length
             },
             config: {
-                gameWidth: config.gameWidth,
-                gameHeight: config.gameHeight,
-                maxFood: config.maxFood,
-                maxVirus: config.maxVirus,
-                maxHeartbeatInterval: config.maxHeartbeatInterval
+                gameWidth: config.game.width,
+                gameHeight: config.game.height,
+                maxFood: config.game.maxFood,
+                maxVirus: config.game.maxVirus,
+                maxHeartbeatInterval: config.server.maxHeartbeatInterval
             }
         });
     });
