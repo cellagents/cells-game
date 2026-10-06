@@ -52,6 +52,25 @@ export function canvasColorsFor(theme: Theme): CanvasColors {
     return CANVAS_COLORS[theme];
 }
 
+/** Build a RendererPalette from a theme. Centralised so every viewport
+ *  gets the same mapping and the palette extends in lockstep when new
+ *  draw features are added. */
+export function rendererPaletteFor(theme: Theme): import('./thin/renderer').RendererPalette {
+    const c = CANVAS_COLORS[theme];
+    return {
+        background: c.background,
+        boundary: c.border,
+        food: c.food,
+        mass: c.mass,
+        virus: c.virus,
+        virusStroke: c.virusStroke,
+        grid: c.grid,
+        outsideArena: c.outsideArena,
+        labelText: theme === 'dark' ? '#ffffff' : '#ffffff',
+        labelOutline: '#000000'
+    };
+}
+
 export function currentTheme(): Theme {
     try {
         const stored = window.localStorage.getItem(KEY);
