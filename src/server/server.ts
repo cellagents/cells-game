@@ -22,7 +22,7 @@ import {
     type Tick,
     type PlayerSnapshot,
     type SelfSnapshot
-} from '../shared/protocol';
+} from '@cellagents/game-protocol';
 import { readFileSync } from 'fs';
 
 const app = express();

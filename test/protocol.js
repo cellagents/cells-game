@@ -6,9 +6,10 @@
 
 const { expect } = require('chai');
 
-// require the compiled protocol module (bin/ is produced by
-// `node scripts/build.mjs`). The test script runs after build.
-const protocol = require('../bin/shared/protocol');
+// Import the published protocol package. The identical suite lives
+// in @cellagents/game-protocol itself; this copy exists so cells-game's
+// CI exercises the package shape as the server consumes it.
+const protocol = require('@cellagents/game-protocol');
 
 describe('protocol 1.0 — parseSubscribe', () => {
     const base = (over) => Object.assign(

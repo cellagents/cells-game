@@ -1,5 +1,8 @@
 FROM node:22-alpine
 
+# git is needed by npm to resolve the @cellagents/game-protocol
+# dependency, which is served as a tagged ref off its GitHub repo.
+RUN apk add --no-cache git
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 

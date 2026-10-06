@@ -28,10 +28,10 @@ import {
     type Reject,
     type Tick,
     type Leaderboard
-} from '../../../shared/protocol';
+} from '@cellagents/game-protocol';
 import type { WorldSize } from './camera';
 
-export type { Capability } from '../../../shared/protocol';
+export type { Capability } from '@cellagents/game-protocol';
 
 export interface ConnectOptions {
     gameServerUrl: string;

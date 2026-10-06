@@ -7,7 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import type { Server as SocketIOServer, Socket } from 'socket.io';
 import type { Map as GameMap } from './map/map';
 import config from '../config';
-import { ServerEvent } from '../shared/protocol';
+import { ServerEvent } from '@cellagents/game-protocol';
 
 export interface AdminDeps {
     io: SocketIOServer;

@@ -9,5 +9,5 @@
         "noEmitOnError": false,
         "types": []
     },
-    "include": ["src/client/**/*", "src/shared/**/*"]
+    "include": ["src/client/**/*"]
 }
