@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import type { Server as SocketIOServer, Socket } from 'socket.io';
 import type { Map as GameMap } from './map/map';
 import config from '../config';
+import { ServerEvent } from '../shared/protocol';
 
 export interface AdminDeps {
     io: SocketIOServer;
@@ -75,7 +76,7 @@ export function createAdminRouter(deps: AdminDeps): Router {
         const player = deps.map.players.data[index];
         const socket = deps.sockets[player.id];
         if (socket) {
-            socket.emit('kick', 'Kicked by admin.');
+            socket.emit(ServerEvent.kick, { reason: 'Kicked by admin.' });
             socket.disconnect();
         }
         deps.map.players.removePlayerByIndex(index);
@@ -91,7 +92,7 @@ export function createAdminRouter(deps: AdminDeps): Router {
         }
         // Admin broadcasts appear in every chat as a message from the
         // reserved sender "ADMIN"; clients render that sender in bold.
-        deps.io.emit('serverSendPlayerChat', { sender: 'ADMIN', message });
+        deps.io.emit(ServerEvent.serverSendPlayerChat, { sender: 'ADMIN', message });
         console.log('[ADMIN] HTTP broadcast: ' + message);
         res.json({ ok: true });
     });

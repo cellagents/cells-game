@@ -14,9 +14,13 @@ import { adminEnabled, createAdminRouter } from './admin';
 import {
     PROTOCOL_VERSION,
     parseSubscribe,
+    ClientEvent,
+    ServerEvent,
     type Capability,
     type Welcome,
-    type Reject
+    type Reject,
+    type Tick,
+    type PlayerSnapshot
 } from '../shared/protocol';
 import { readFileSync } from 'fs';
 
@@ -291,11 +295,11 @@ function attachSubscriber(socket: Socket, raw: unknown): void {
         map.players.pushNew(player);
         record.player = player;
         record.lastSeen = { x: player.x, y: player.y };
-        io.emit('playerJoin', { name: player.name });
+        io.emit(ServerEvent.playerJoin, { name: player.name });
         console.log('[INFO] Player ' + player.name + ' connected (presence subscriber).');
     } else {
         // Spectator or follow viewer; neither occupies the map.
-        io.emit('playerJoin', { name: '' });
+        io.emit(ServerEvent.playerJoin, { name: '' });
     }
 
     socket.emit('welcome', welcomeFor(record));
@@ -324,19 +328,17 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         cleanupSocket(socket, /* notifyOthers */ true);
     });
 
-    socket.on('pingcheck', () => {
-        socket.emit('pongcheck');
+    socket.on(ClientEvent.pingcheck, () => {
+        socket.emit(ServerEvent.pongcheck);
     });
 
     // windowResized is a viewport concern; a follow viewer with no
     // screen advertised ignores it (its viewport comes from the
     // followed player's screen in the legacy fan-out path).
-    socket.on('windowResized', (data: { screenWidth?: number; screenHeight?: number; width?: number; height?: number }) => {
+    socket.on(ClientEvent.windowResized, (data: { width?: number; height?: number }) => {
         if (!record.capabilities.has('viewport')) return;
-        const w = typeof data.width === 'number' ? data.width : data.screenWidth;
-        const h = typeof data.height === 'number' ? data.height : data.screenHeight;
-        if (typeof w !== 'number' || typeof h !== 'number') return;
-        const clamped = clampScreen({ width: w, height: h });
+        if (typeof data?.width !== 'number' || typeof data?.height !== 'number') return;
+        const clamped = clampScreen({ width: data.width, height: data.height });
         record.screen = clamped;
         if (record.player) {
             record.player.screenWidth = clamped.width;
@@ -344,7 +346,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
     });
 
-    socket.on('respawn', () => {
+    socket.on(ClientEvent.respawn, () => {
         if (!record.capabilities.has('steer') || !record.player) return;
         map.players.removePlayerByID(record.player.id);
         record.player.init(generateSpawnpoint(), config.game.defaultPlayerMass);
@@ -353,7 +355,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         console.log('[INFO] User ' + record.name + ' has respawned');
     });
 
-    socket.on('playerChat', (data: { message?: unknown }) => {
+    socket.on(ClientEvent.playerChat, (data: { message?: unknown }) => {
         if (!record.capabilities.has('presence') || !record.player || record.name === null) return;
         if (typeof data?.message !== 'string') return;
         const stripped = data.message.replace(/(<([^>]+)>)/ig, '').substring(0, 35);
@@ -365,7 +367,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
 
         // Sender is server-authoritative. The client cannot forge it.
-        socket.broadcast.emit('serverSendPlayerChat', {
+        socket.broadcast.emit(ServerEvent.serverSendPlayerChat, {
             sender: record.name,
             message: stripped
         });
@@ -374,8 +376,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
             .catch((err) => console.error('Error when attempting to log chat message', err));
     });
 
-    // Heartbeat / fire / split — legacy event names kept until Day 2b.
-    socket.on('0', (target: { x: number; y: number }) => {
+    socket.on(ClientEvent.heartbeat, (target: { x: number; y: number }) => {
         if (!record.capabilities.has('steer') || !record.player) return;
         record.player.lastHeartbeat = new Date().getTime();
         if (target.x !== record.player.x || target.y !== record.player.y) {
@@ -383,7 +384,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
     });
 
-    socket.on('1', () => {
+    socket.on(ClientEvent.fireFood, () => {
         if (!record.capabilities.has('steer') || !record.player) return;
         const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
         for (let i = 0; i < record.player.cells.length; i++) {
@@ -394,7 +395,7 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
     });
 
-    socket.on('2', () => {
+    socket.on(ClientEvent.split, () => {
         if (!record.capabilities.has('steer') || !record.player) return;
         record.player.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
     });
@@ -408,7 +409,7 @@ function cleanupSocket(socket: Socket, notifyOthers: boolean): void {
     if (record.player) {
         map.players.removePlayerByID(record.player.id);
         if (notifyOthers && record.name !== null) {
-            socket.broadcast.emit('playerDisconnect', { name: record.name });
+            socket.broadcast.emit(ServerEvent.playerDisconnect, { name: record.name });
             console.log('[INFO] User ' + record.name + ' has disconnected');
         }
     }
@@ -417,7 +418,9 @@ function cleanupSocket(socket: Socket, notifyOthers: boolean): void {
 const tickPlayer = (currentPlayer: Player) => {
     if (config.server.maxHeartbeatInterval > 0 &&
         currentPlayer.lastHeartbeat < new Date().getTime() - config.server.maxHeartbeatInterval) {
-        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.server.maxHeartbeatInterval + ' ago.');
+        sockets[currentPlayer.id].emit(ServerEvent.kick, {
+            reason: 'Last heartbeat received over ' + config.server.maxHeartbeatInterval + ' ago.'
+        });
         sockets[currentPlayer.id].disconnect();
     }
 
@@ -476,8 +479,7 @@ const tickGame = () => {
         if (playerDied) {
             const playerGotEaten = map.players.data[gotEaten.playerIndex];
             const killer = map.players.data[eater.playerIndex];
-            io.emit('playerDied', {
-                name: playerGotEaten.name,
+            io.emit(ServerEvent.playerDied, {
                 playerEatenName: playerGotEaten.name,
                 killerName: killer?.name ?? null
             });
@@ -489,7 +491,7 @@ const tickGame = () => {
                 victimRecord.lastSeen = { x: playerGotEaten.x, y: playerGotEaten.y };
                 victimRecord.player = null;
             }
-            sockets[playerGotEaten.id].emit('RIP');
+            sockets[playerGotEaten.id].emit(ServerEvent.died);
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
     });
@@ -522,43 +524,37 @@ const gameloop = () => {
 };
 
 /** Compose and emit a tick for one subscriber. Centralises the three
- *  camera semantics (presence, follow, full-map) and the dead-state
- *  behaviour (presence record whose player is null). The outbound
- *  wire event is still the legacy 'serverTellPlayerMove' tuple;
- *  Day 2b renames it to a flattened 'tick'. */
+ *  camera semantics (presence, follow, full-map) plus the dead-state
+ *  behaviour (presence record whose player is null). */
 function emitTickFor(socket: Socket, record: Subscriber): void {
-    // Decide the camera anchor + screen rectangle. If no rectangle,
-    // the tick carries unculled (full-map) entities.
+    // self (per spec): own player for presence subscribers (null
+    // between death and respawn); followed player for viewport+follow
+    // viewers (null if the target is gone); null for full-map
+    // spectators.
+    let selfPlayer: Player | null = null;
     let anchor: { x: number; y: number } | null = null;
     let screen: { width: number; height: number } | null = null;
 
     if (record.player) {
-        // Live presence subscriber: anchor on self.
+        selfPlayer = record.player;
         anchor = { x: record.player.x, y: record.player.y };
         screen = record.screen;
         record.lastSeen = anchor;
     } else if (record.capabilities.has('presence')) {
-        // Dead presence subscriber (awaiting respawn). Cull around
-        // the frozen death spot so the client still sees nearby food
-        // / killers while it decides to respawn.
+        // Dead presence subscriber awaiting respawn.
         anchor = record.lastSeen;
         screen = record.screen;
     } else if (record.capabilities.has('viewport') && record.follow) {
-        // Follow viewer. Try to centre on the followed player; fall
-        // back to full-map if that player is gone.
         const target = map.players.data.find((p) => p.id === record.follow);
         if (target && target.screenWidth && target.screenHeight) {
+            selfPlayer = target;
             anchor = { x: target.x, y: target.y };
             screen = { width: target.screenWidth, height: target.screenHeight };
             record.lastSeen = anchor;
         }
     }
-    // Else: full-map spectator (no viewport). anchor stays null.
 
-    const anchorAndScreen = anchor && screen
-        ? { anchor, screen }
-        : null;
-
+    const anchorAndScreen = anchor && screen ? { anchor, screen } : null;
     const inView = anchorAndScreen
         ? (e: { x: number; y: number; radius: number }) => util.testRectangleRectangle(
             e.x, e.y, e.radius * 1.1, e.radius * 1.1,
@@ -567,44 +563,45 @@ function emitTickFor(socket: Socket, record: Subscriber): void {
         )
         : () => true;
 
-    const visibleFood = anchorAndScreen ? map.food.data.filter(inView) : map.food.data;
-    const visibleViruses = anchorAndScreen ? map.viruses.data.filter(inView) : map.viruses.data;
-    const visibleMass = anchorAndScreen ? map.massFood.data.filter(inView) : map.massFood.data;
-    const visiblePlayers = anchorAndScreen
-        ? map.players.data
-            .filter((p) => p.cells.some((c) => inView(c)))
-            .map(playerSnapshot)
-        : map.players.data.map(playerSnapshot);
+    const food = (anchorAndScreen ? map.food.data.filter(inView) : map.food.data)
+        .map((f) => ({ x: f.x, y: f.y, hue: f.hue, radius: f.radius }));
+    const viruses = (anchorAndScreen ? map.viruses.data.filter(inView) : map.viruses.data)
+        .map((v) => ({ x: v.x, y: v.y, radius: v.radius }));
+    const mass = (anchorAndScreen ? map.massFood.data.filter(inView) : map.massFood.data)
+        .map((m) => ({
+            x: m.x,
+            y: m.y,
+            hue: typeof m.hue === 'number' ? m.hue : 0,
+            radius: typeof m.radius === 'number' ? m.radius : 10
+        }));
+    const players = (anchorAndScreen
+        ? map.players.data.filter((p) => p.cells.some((c) => inView(c)))
+        : map.players.data
+    ).map(playerSnapshot);
 
-    // The legacy fan-out tuple keeps slot 1 as "the self payload".
-    // For a live presence subscriber it's the player; for everyone
-    // else it's a placeholder centred on the camera anchor (or map
-    // centre for a bare spectator).
-    const selfPayload = record.player
-        ? playerSnapshot(record.player)
-        : {
-            id: socket.id,
-            name: '',
-            hue: 100,
-            massTotal: 0,
-            x: anchor ? anchor.x : config.game.width / 2,
-            y: anchor ? anchor.y : config.game.height / 2,
-            cells: []
-        };
-
-    socket.emit('serverTellPlayerMove', selfPayload, visiblePlayers, visibleFood, visibleMass, visibleViruses);
+    const tick: Tick = {
+        self: selfPlayer ? playerSnapshot(selfPlayer) : null,
+        players,
+        food,
+        mass,
+        viruses
+    };
+    socket.emit(ServerEvent.tick, tick);
     if (leaderboardChanged) sendLeaderboard(socket);
 }
 
-function playerSnapshot(p: Player) {
+function playerSnapshot(p: Player): PlayerSnapshot {
     return {
-        x: p.x,
-        y: p.y,
-        cells: p.cells,
-        massTotal: Math.round(p.massTotal),
-        hue: p.hue,
         id: p.id,
-        name: p.name
+        name: p.name,
+        hue: p.hue,
+        massTotal: Math.round(p.massTotal),
+        cells: p.cells.map((c) => ({
+            x: c.x,
+            y: c.y,
+            mass: c.mass,
+            radius: c.radius
+        }))
     };
 }
 
@@ -618,7 +615,7 @@ const sendUpdates = () => {
 };
 
 const sendLeaderboard = (socket: Socket) => {
-    socket.emit('leaderboard', {
+    socket.emit(ServerEvent.leaderboard, {
         players: map.players.data.length,
         leaderboard
     });
