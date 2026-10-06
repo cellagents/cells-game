@@ -6,6 +6,7 @@ import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { fullMapCamera } from './thin/camera';
 import { createViewport } from './thin/viewport';
+import { attachMinimap } from './thin/minimap';
 
 const canvas = document.getElementById('cvs') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
@@ -25,6 +26,8 @@ createViewport({
     chatConfig: { maxLines: 50 },
     leaderboardEl: document.getElementById('leaderboard')
 });
+
+attachMinimap({ game });
 
 function chatEnabled(): boolean {
     const raw = new URLSearchParams(window.location.search).get('chat');

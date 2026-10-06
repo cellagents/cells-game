@@ -116,6 +116,9 @@ div {
 .floating-btn.leaderboard-btn {
     top: calc(var(--floating-btn-edge) + 3 * (var(--floating-btn-size) + var(--floating-btn-gap)));
 }
+.floating-btn.minimap-btn {
+    top: calc(var(--floating-btn-edge) + 4 * (var(--floating-btn-size) + var(--floating-btn-gap)));
+}
 
 /* -------- Game: on-screen touch controls --------
    Circular, semi-transparent, sized against the smaller viewport
@@ -465,6 +468,24 @@ body > #chatbox {
 
 /* -------- Chat visibility toggle (all canvas pages) -------- */
 body.chat-hidden #chatbox { display: none; }
+
+/* -------- Minimap (all three viewports) --------
+   Top-left overlay sized to roughly match the chat window below it.
+   Backed by its own <canvas id="minimap"> rendered through a thin
+   Renderer with fullMapCamera; see thin/minimap.ts. The canvas is a
+   direct body child so the z-index stacks the same way the chat
+   overlay does. */
+canvas.minimap {
+    position: absolute;
+    top: 10px; left: 10px;
+    width: 300px; height: 300px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    z-index: 10;
+    pointer-events: none;
+}
+body.minimap-hidden canvas.minimap { display: none; }
 
 /* -------- Leaderboard visibility toggle (all canvas pages) --------
    Covers all three mounts: #status (player), .sidebar (spectator),
