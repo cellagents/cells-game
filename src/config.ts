@@ -12,7 +12,8 @@
 //   game.*    — world + gameplay mechanics (incl. per-player starting
 //               values; the server owns these, the client never does)
 //   client.*  — surface-specific knobs grouped by page/view:
-//               theme, admin, follow, lobby, player, spectator
+//               global (cross-view defaults), admin, follow, lobby,
+//               player, spectator, managed
 //
 // There is no compatibility shim for the old flat shape; the loader
 // errors out loudly if someone hands it a pre-3.0 config so the
@@ -86,38 +87,44 @@ export interface LobbyContentConfig {
     extraLinks: LobbyLink[];
 }
 
-export interface LobbyConfig {
-    content: LobbyContentConfig;
-}
 
-export interface AdminConfig {
-    /** Bearer token for the /admin HTTP API. Admin is disabled when
-     *  this is unset, empty, or the literal placeholder "DEFAULT". */
-    pass: string;
-}
-
-/** Per-widget rule for a view's floating-button chrome. `button: false`
- *  omits the toggle button from the DOM AND locks the widget to its
- *  defaultVisible value for that viewport width class (users can't
- *  toggle it in). `defaultVisible` is split so operators can hide
- *  heavy overlays on narrow screens without touching desktop. */
+/** Rule for a toggleable widget: button present AND default visibility.
+ *  `button: false` omits the toggle button from the DOM AND locks the
+ *  widget to its defaultVisible value for that viewport width class
+ *  (users can't toggle it in). `defaultVisible` is split so operators
+ *  can hide heavy overlays on narrow screens without touching desktop. */
 export interface ViewUiWidget {
     button: boolean;
     defaultVisible: { desktop: boolean; mobile: boolean };
 }
 
-/** Rule for action-only floating buttons (exit, theme) that have no
- *  visibility state of their own. `button: false` omits the button;
- *  nothing else to track. If the button is forced on a view that
- *  doesn't wire an action for it, pressing it is a no-op. */
+/** Rule for an action-only floating button (one that does something
+ *  on click but has no visibility state of its own). `button: false`
+ *  omits the button entirely. If forced on a view that doesn't wire
+ *  an action for it, pressing it is a no-op. */
 export interface ViewUiAction {
     button: boolean;
 }
 
-/** All five floating buttons a viewport can surface. Theme and exit
- *  are action-only (no visibility state); chat/leaderboard/minimap
- *  each gate a widget. */
-export interface ViewUiConfig {
+/** Lobby chrome: just the theme toggle. The lobby IS the exit
+ *  destination so no exit button here; chat/leaderboard/minimap
+ *  are canvas-view concerns. */
+export interface LobbyUiConfig {
+    theme: ViewUiAction;
+}
+
+/** Admin chrome: theme toggle plus a lock button that clears the
+ *  admin session and returns to the login card. `lock` is distinct
+ *  from `exit` because the admin page doesn't navigate away; it
+ *  just reverts to its own login view. */
+export interface AdminUiConfig {
+    theme: ViewUiAction;
+    lock: ViewUiAction;
+}
+
+/** Canvas-view chrome: full stack. `exit` navigates back to the lobby;
+ *  the three widgets gate independent overlays. */
+export interface CanvasUiConfig {
     exit: ViewUiAction;
     theme: ViewUiAction;
     chat: ViewUiWidget;
@@ -125,19 +132,29 @@ export interface ViewUiConfig {
     minimap: ViewUiWidget;
 }
 
-/** Placeholder sections. Only ui is populated today; other surface
- *  knobs (prediction overlays, info panels, etc.) will land here. */
-export interface ThemeConfig {}
-export interface FollowConfig { ui: ViewUiConfig }
-export interface PlayerClientConfig { ui: ViewUiConfig }
-export interface SpectatorConfig { ui: ViewUiConfig }
+export interface AdminConfig {
+    /** Bearer token for the /admin HTTP API. Admin is disabled when
+     *  this is unset, empty, or the literal placeholder "DEFAULT". */
+    pass: string;
+    ui: AdminUiConfig;
+}
+
+/** Cross-view defaults (theme preference overrides, future shared
+ *  branding knobs). Empty today, reserved as a sibling of the
+ *  per-view sections. */
+export interface GlobalConfig {}
+
+export interface LobbyConfig { content: LobbyContentConfig; ui: LobbyUiConfig }
+export interface FollowConfig { ui: CanvasUiConfig }
+export interface PlayerClientConfig { ui: CanvasUiConfig }
+export interface SpectatorConfig { ui: CanvasUiConfig }
 /** Managed is the operator-embedded view (iframe harness surface).
- *  Same chrome shape as the others; typical config disables all
- *  buttons so the embedding parent stays in control. */
-export interface ManagedConfig { ui: ViewUiConfig }
+ *  Same chrome shape as the other canvas views; typical config
+ *  disables everything so the embedding parent stays in control. */
+export interface ManagedConfig { ui: CanvasUiConfig }
 
 export interface ClientConfig {
-    theme: ThemeConfig;
+    global: GlobalConfig;
     admin: AdminConfig;
     follow: FollowConfig;
     lobby: LobbyConfig;
@@ -147,7 +164,7 @@ export interface ClientConfig {
 }
 
 /** Views that have a `ui` section the client fetches at load time. */
-export type UiView = 'player' | 'spectator' | 'follow' | 'managed';
+export type UiView = 'lobby' | 'admin' | 'player' | 'spectator' | 'follow' | 'managed';
 
 export interface Config {
     server: ServerConfig;

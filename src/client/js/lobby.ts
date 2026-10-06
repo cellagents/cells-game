@@ -1,12 +1,18 @@
 // Lobby page. Collects a nickname, routes the user to /player or
-// /spectator. Theme toggle lives here too so the preference is set
-// before the gameplay surface loads.
+// /spectator. The theme-toggle button is gated by the same per-view
+// UI config that drives the canvas-page chrome; the operator can
+// disable it per deployment.
 
 import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+import { fetchUiConfig, pruneButton } from './thin/chrome';
 
 applyTheme(currentTheme());
-const themeBtn = document.getElementById('themeToggle');
-if (themeBtn) attachThemeToggle(themeBtn);
+
+fetchUiConfig('lobby').then((ui) => {
+    pruneButton('themeToggle', ui.theme.button);
+    const themeBtn = ui.theme.button ? document.getElementById('themeToggle') : null;
+    if (themeBtn) attachThemeToggle(themeBtn);
+});
 
 const nameInput = document.getElementById('playerNameInput') as HTMLInputElement;
 const nickErrorText = document.querySelector('#startMenu .input-error') as HTMLElement;
