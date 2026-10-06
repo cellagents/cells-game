@@ -6,7 +6,7 @@
 
 export type Theme = 'light' | 'dark';
 
-const KEY = 'cellagents.theme';
+const KEY = 'cellagents.cells.theme';
 const DEFAULT: Theme = 'light';
 
 export interface CanvasColors {

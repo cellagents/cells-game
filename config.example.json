@@ -30,5 +30,20 @@
     "newPlayerInitialPosition": "farthest",
     "massLossRate": 1,
     "minMassLoss": 50,
-    "dbFileName": "db.sqlite3"
+    "dbFileName": "db.sqlite3",
+    "lobby": {
+        "gui": {
+            "buttonsBefore": [],
+            "buttonsAfter": [
+                {
+                    "label": "Official site",
+                    "href": "https://cellagents.dev/"
+                },
+                {
+                    "label": "About",
+                    "href": "https://cellagents.dev/about"
+                }
+            ]
+        }
+    }
 }

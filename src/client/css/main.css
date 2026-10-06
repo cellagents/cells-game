@@ -244,22 +244,57 @@ body.player-mode > #chatbox {
 }
 .menu-card .input-error { color: #c33; font-size: 12px; opacity: 0; display: block; margin-bottom: 8px; }
 
-.menu-button {
+/* -------- Buttons (shape / size / color split, bootstrap-style) --------
+   Shape lives on .btn; size modifiers (.btn-sm) override just the
+   geometry; variant modifiers (.btn-primary, .btn-secondary) override
+   just the colors. Combine as needed, e.g. `.btn .btn-sm .btn-primary`. */
+.btn {
     display: block; width: 100%; height: 42px;
-    font-size: 16px; color: #fff; text-align: center;
-    background: var(--accent); border: 0;
-    border-bottom: 2px solid var(--accent-dark);
-    box-shadow: inset 0 -2px var(--accent-dark);
+    padding: 0;
+    font-size: 16px; text-align: center; line-height: 40px;
     border-radius: 5px; cursor: pointer;
     margin-bottom: 10px;
+    border: 0;
 }
-.menu-button:hover, .menu-button:active {
+/* Anchor-shaped buttons: strip the UA underline so an <a class="btn">
+   is visually indistinguishable from the <button> variant. */
+a.btn { text-decoration: none; }
+a.btn:hover { text-decoration: none; }
+
+/* Size modifier. */
+.btn-sm {
+    display: inline-block; width: auto; height: auto;
+    padding: 4px 10px; font-size: 12px; line-height: normal;
+    margin: 0;
+}
+
+/* Primary (brand accent). */
+.btn-primary {
+    color: #fff;
+    background: var(--accent);
+    border-bottom: 2px solid var(--accent-dark);
+    box-shadow: inset 0 -2px var(--accent-dark);
+}
+.btn-primary:hover, .btn-primary:active {
     background: var(--accent-hover); box-shadow: none;
 }
-.menu-button-sm {
-    display: inline-block; width: auto; height: auto;
-    padding: 4px 10px; font-size: 12px; margin: 0;
+
+/* Secondary (neutral surface). Used for operator-configured lobby links
+   so they don't compete visually with the primary Play/Spectate CTAs. */
+.btn-secondary {
+    color: var(--menu-card-text);
+    background: var(--menu-card-bg);
+    border: 1px solid var(--menu-input-border);
+    border-bottom: 2px solid var(--menu-input-border);
+    box-shadow: none;
 }
+.btn-secondary:hover, .btn-secondary:active {
+    background: var(--panel-bg);
+    color: var(--menu-card-text);
+    box-shadow: none;
+}
+
+.lobby-extra-buttons:empty { display: none; }
 
 /* Legacy game start-menu ids reuse the above styles. */
 #startMenuWrapper { position: absolute; inset: 0; z-index: 2; }
@@ -286,18 +321,6 @@ body.player-mode > #chatbox {
 }
 #playerNameInput:focus { border-color: var(--menu-input-border-focus); box-shadow: 0 0 3px 1px rgba(0,0,0,0.1); }
 #startMenu .input-error { color: #c33; opacity: 0; font-size: 12px; display: block; margin-bottom: 8px; }
-#startButton, #spectateButton, #settingsButton {
-    display: block; width: 100%; height: 42px;
-    font-size: 16px; color: #fff; text-align: center;
-    background: var(--accent); border: 0;
-    border-bottom: 2px solid var(--accent-dark);
-    box-shadow: inset 0 -2px var(--accent-dark);
-    border-radius: 5px; cursor: pointer; margin-bottom: 10px;
-}
-#startButton:hover, #spectateButton:hover, #settingsButton:hover,
-#startButton:active, #spectateButton:active, #settingsButton:active {
-    background: var(--accent-hover); box-shadow: none;
-}
 #settings { max-height: 0; }
 #startMenu h3 { padding-bottom: 0; margin-bottom: 0; }
 #startMenu ul { margin: 10px; padding: 10px; margin-top: 0; }
@@ -317,7 +340,7 @@ body.player-mode > #chatbox {
 }
 .admin-header .admin-title { font-size: 22px; font-weight: bold; }
 .admin-header .session-meta { font-size: 12px; opacity: 0.7; }
-.admin-header .menu-button-sm { margin-left: auto; }
+.admin-header .btn-sm { margin-left: auto; }
 
 .admin-grid {
     display: grid;
