@@ -20,7 +20,7 @@ export interface MinimapOptions {
     game: GameHandle;
     /** Optional id of the canvas element. Defaults to 'minimap'. */
     canvasId?: string;
-    /** Optional id of the toggle button. Defaults to 'minimapToggle'.
+    /** Optional id of the toggle button. Defaults to 'minimap-toggle'.
      *  If the viewport chrome pruned the button, no wiring happens. */
     toggleId?: string;
 }
@@ -29,7 +29,7 @@ export function attachMinimap(opts: MinimapOptions): void {
     const canvas = document.getElementById(opts.canvasId ?? 'minimap') as HTMLCanvasElement | null;
     if (!canvas) return;
 
-    const toggle = document.getElementById(opts.toggleId ?? 'minimapToggle');
+    const toggle = document.getElementById(opts.toggleId ?? 'minimap-toggle');
     if (toggle) {
         toggle.addEventListener('click', () => {
             document.body.classList.toggle('minimap-hidden');

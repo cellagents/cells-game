@@ -9,15 +9,15 @@ import { fetchUiConfig, pruneButton } from './thin/chrome';
 applyTheme(currentTheme());
 
 fetchUiConfig('lobby').then((ui) => {
-    pruneButton('themeToggle', ui.theme.button);
-    const themeBtn = ui.theme.button ? document.getElementById('themeToggle') : null;
+    pruneButton('theme-toggle', ui.theme.button);
+    const themeBtn = ui.theme.button ? document.getElementById('theme-toggle') : null;
     if (themeBtn) attachThemeToggle(themeBtn);
 });
 
-const nameInput = document.getElementById('playerNameInput') as HTMLInputElement;
-const nickErrorText = document.querySelector('#startMenu .input-error') as HTMLElement;
-const playBtn = document.getElementById('startButton') as HTMLButtonElement;
-const spectateBtn = document.getElementById('spectateButton') as HTMLButtonElement;
+const nameInput = document.getElementById('player-name-input') as HTMLInputElement;
+const nickErrorText = document.querySelector('#start-menu .input-error') as HTMLElement;
+const playBtn = document.getElementById('start-button') as HTMLButtonElement;
+const spectateBtn = document.getElementById('spectate-button') as HTMLButtonElement;
 
 function validNick(value: string): boolean {
     return /^\w+$/.test(value);
@@ -52,7 +52,7 @@ fetch('/lobby-config')
     .then((r) => r.ok ? r.json() as Promise<LobbyConfigResponse> : null)
     .then((cfg) => {
         if (!cfg) return;
-        renderLinks(document.getElementById('lobbyExtraLinks'), cfg.extraLinks);
+        renderLinks(document.getElementById('lobby-extra-links'), cfg.extraLinks);
     })
     .catch(() => { /* non-fatal: lobby still works without extras */ });
 

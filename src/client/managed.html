@@ -11,25 +11,25 @@
        the DOM so the shared viewport chrome can decide what to keep;
        by default (config.client.managed.ui) all five buttons are
        pruned so the embedding parent is in control. -->
-  <a id="exitToMenu" class="floating-btn exit-btn" href="/" aria-label="Return to menu" title="Return to menu">×</a>
-  <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
-  <button id="chatToggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat" hidden>≡</button>
-  <button id="leaderboardToggle" class="floating-btn leaderboard-btn" type="button" aria-label="Toggle leaderboard" title="Toggle leaderboard">▤</button>
-  <button id="minimapToggle" class="floating-btn minimap-btn" type="button" aria-label="Toggle minimap" title="Toggle minimap">◰</button>
+  <a id="exit-to-menu" class="floating-btn exit-btn" href="/" aria-label="Return to menu" title="Return to menu">×</a>
+  <button id="theme-toggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+  <button id="chat-toggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat" hidden>≡</button>
+  <button id="leaderboard-toggle" class="floating-btn leaderboard-btn" type="button" aria-label="Toggle leaderboard" title="Toggle leaderboard">▤</button>
+  <button id="minimap-toggle" class="floating-btn minimap-btn" type="button" aria-label="Toggle minimap" title="Toggle minimap">◰</button>
 
   <canvas id="minimap" class="minimap"></canvas>
-  <canvas id="cvs"></canvas>
+  <canvas id="game-canvas"></canvas>
 
-  <!-- Status overlay. JS fills #statusMessage and toggles [hidden] on
+  <!-- Status overlay. JS fills #status-message and toggles [hidden] on
        the wrapper. In managed mode the back-to-lobby link is omitted
        by StatusOverlay because the exit action is disabled. -->
-  <div id="statusOverlay" class="status-overlay" hidden>
+  <div id="status-overlay" class="status-overlay" hidden>
     <div class="status-card">
-      <p id="statusMessage"></p>
-      <a id="statusAction" href="/" hidden>Back to lobby</a>
+      <p id="status-message"></p>
+      <a id="status-action" href="/" hidden>Back to lobby</a>
     </div>
   </div>
-  <div class="sidebar">
+  <div class="leaderboard-panel">
     <div id="leaderboard"><span class="title">Leaderboard</span></div>
   </div>
   <!-- Chat container. Mounted read-only by the shared chat module

@@ -24,9 +24,9 @@ const loginTokenInput = document.getElementById('login-token') as HTMLInputEleme
 const loginStatusEl = document.getElementById('login-status') as HTMLElement;
 
 const sessionExpiryEl = document.getElementById('session-expiry') as HTMLElement;
-const statusEl = document.getElementById('status') as HTMLElement;
-const stateEl = document.getElementById('state') as HTMLElement;
-const playersEl = document.getElementById('players') as HTMLElement;
+const statusEl = document.getElementById('admin-status') as HTMLElement;
+const stateEl = document.getElementById('admin-state') as HTMLElement;
+const playersEl = document.getElementById('admin-players') as HTMLElement;
 const chatboxEl = document.getElementById('chatbox') as HTMLElement;
 // Populated by the UI config fetch below. Admin starts without any
 // chrome wired; the fetch resolves early (before login completes) so
@@ -42,11 +42,11 @@ let chat: ChatHandle | null = null;
 applyTheme(currentTheme());
 
 fetchUiConfig('admin').then((ui) => {
-    pruneButton('themeToggle', ui.theme.button);
-    pruneButton('lockToggle', ui.lock.button);
-    const themeBtn = ui.theme.button ? document.getElementById('themeToggle') : null;
+    pruneButton('theme-toggle', ui.theme.button);
+    pruneButton('lock-toggle', ui.lock.button);
+    const themeBtn = ui.theme.button ? document.getElementById('theme-toggle') : null;
     if (themeBtn) attachThemeToggle(themeBtn);
-    lockBtn = ui.lock.button ? document.getElementById('lockToggle') as HTMLButtonElement | null : null;
+    lockBtn = ui.lock.button ? document.getElementById('lock-toggle') as HTMLButtonElement | null : null;
     lockEnabled = ui.lock.button;
     if (lockBtn) lockBtn.addEventListener('click', () => showLogin('Locked.'));
     // Reveal the lock button only when the admin view is already up,
