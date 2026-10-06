@@ -7,6 +7,7 @@ import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
 import { createViewport } from './thin/viewport';
+import { attachMinimap } from './thin/minimap';
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
@@ -40,6 +41,8 @@ createViewport({
     chatConfig: { maxLines: 50 },
     leaderboardEl: document.getElementById('leaderboard')
 });
+
+attachMinimap({ game });
 
 // Non-managed grace window: if the server has not emitted a snapshot
 // whose self.id matches our followId within the last GRACE_MS,

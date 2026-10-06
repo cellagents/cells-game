@@ -11,6 +11,7 @@ import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
 import { attachInput } from './thin/input';
+import { attachMinimap } from './thin/minimap';
 import { createViewport } from './thin/viewport';
 import { applyTheme, cycleTheme } from './theme';
 
@@ -168,6 +169,8 @@ const input = attachInput({
     game,
     onChatFocus: () => vp.chat?.input?.focus()
 });
+
+attachMinimap({ game });
 
 function loop(): void {
     if (!document.hidden && game.snapshot) {
