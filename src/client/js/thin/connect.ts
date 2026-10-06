@@ -166,13 +166,13 @@ export function connect(opts: ConnectOptions): GameHandle {
         handle.world = gameSizes;
         emit('world', gameSizes);
         if (role === 'player') {
-            // Store id and run the player handshake. The caller supplies
-            // the sanitized name; screen dimensions come from the window
-            // and may change later via sendWindowResized.
+            // Server has placed us; stash the socket id, surface the
+            // welcome event, and ship the gotit payload so the server
+            // can finish initialising our Player and start sending
+            // serverTellPlayerMove to this socket.
             handle.selfId = playerSettings?.id ?? null;
             emit('welcome', playerSettings);
             socket.emit('gotit', {
-                ...(playerSettings || {}),
                 name: opts.playerName ?? '',
                 screenWidth: window.innerWidth,
                 screenHeight: window.innerHeight

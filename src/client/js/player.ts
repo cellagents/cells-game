@@ -137,15 +137,23 @@ function onResize(): void {
 window.addEventListener('resize', onResize);
 onResize();
 
+// Player handshake order (server-driven):
+//   1. socket connects as type=player
+//   2. client emits 'respawn' (asks the server to place us)
+//   3. server emits 'welcome(player, world)'
+//   4. connect.ts emits 'gotit(player)' back
+//   5. server starts shipping serverTellPlayerMove to this socket
+//
+// So the respawn request goes out on connect, not on welcome. The
+// welcome event here is just a notification; the connector has
+// already stashed selfId and sent gotit by the time it fires.
 game.on('connect', () => {
     vp.chat?.addSystem('Connected to the game!');
     vp.chat?.addSystem('Type <b>-help</b> for a list of commands.');
+    game.sendRespawn();
 });
 
-// Welcome: server sent us our canonical player row (id, hue, name...).
-// Immediately request a respawn so the server places us into the world.
 game.on('welcome', () => {
-    game.sendRespawn();
     canvas.focus();
 });
 
