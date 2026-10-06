@@ -1,7 +1,7 @@
 /*jshint expr:true */
 
 const expect = require('chai').expect;
-const util = require('../src/server/lib/util');
+const util = require('../bin/server/lib/util');
 
 /**
  * Tests for server/lib/util.js

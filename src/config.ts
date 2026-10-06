@@ -235,6 +235,14 @@ function loadConfig(): Config {
     // stalled clients (useful for test harnesses and automated agents).
     cfg.server.maxHeartbeatInterval = envInt('MAX_HEARTBEAT_INTERVAL', cfg.server.maxHeartbeatInterval);
 
+    // Defensive defaults for fields added after a config file was
+    // originally written. Keeps a pre-4.0 config.json booting against
+    // the 4.0 server (archival era: operators are expected to migrate,
+    // but we won't crash them while they do).
+    if (!cfg.server.maxViewport) {
+        cfg.server.maxViewport = { width: 2560, height: 2560 };
+    }
+
     return cfg;
 }
 

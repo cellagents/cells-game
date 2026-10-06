@@ -11,6 +11,7 @@
     "watch": "npm run build:dev && node --watch --watch-path=src bin/server/server.js",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "lint": "eslint 'src/**/*.ts'",
+    "pretest": "npm run build:dev",
     "test": "mocha test/**/*.js"
   },
   "repository": {
