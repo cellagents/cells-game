@@ -39,6 +39,9 @@ export const CellSchema = z.object({
 });
 export type Cell = z.infer<typeof CellSchema>;
 
+/** Snapshot of a visible player other than self. The position is
+ *  implicit in the cells; the server does not re-ship a top-level
+ *  (x, y) for non-self entries. */
 export const PlayerSnapshotSchema = z.object({
     id: z.string(),
     name: z.string().nullable(),
@@ -47,6 +50,22 @@ export const PlayerSnapshotSchema = z.object({
     cells: z.array(CellSchema)
 });
 export type PlayerSnapshot = z.infer<typeof PlayerSnapshotSchema>;
+
+/** Camera-anchor snapshot. Differs from PlayerSnapshot by carrying
+ *  the top-level (x, y) the renderer uses to position the viewport.
+ *  For a presence subscriber this is the own player; for a follow
+ *  viewer, the followed player; null for a full-map spectator and
+ *  for a presence subscriber awaiting respawn. */
+export const SelfSnapshotSchema = z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    x: z.number(),
+    y: z.number(),
+    hue: z.number(),
+    massTotal: z.number(),
+    cells: z.array(CellSchema)
+});
+export type SelfSnapshot = z.infer<typeof SelfSnapshotSchema>;
 
 export const FoodSchema = z.object({
     x: z.number(),
@@ -261,7 +280,7 @@ export type ProtocolProbe = z.infer<typeof ProtocolProbeSchema>;
  *  the server. Follow viewers see the followed player's cells as self;
  *  players see their own. */
 export const TickSchema = z.object({
-    self: PlayerSnapshotSchema.nullable(),
+    self: SelfSnapshotSchema.nullable(),
     players: z.array(PlayerSnapshotSchema),
     food: z.array(FoodSchema),
     mass: z.array(MassFoodSchema),

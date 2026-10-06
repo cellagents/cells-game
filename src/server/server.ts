@@ -20,7 +20,8 @@ import {
     type Welcome,
     type Reject,
     type Tick,
-    type PlayerSnapshot
+    type PlayerSnapshot,
+    type SelfSnapshot
 } from '../shared/protocol';
 import { readFileSync } from 'fs';
 
@@ -580,7 +581,7 @@ function emitTickFor(socket: Socket, record: Subscriber): void {
     ).map(playerSnapshot);
 
     const tick: Tick = {
-        self: selfPlayer ? playerSnapshot(selfPlayer) : null,
+        self: selfPlayer ? selfSnapshot(selfPlayer) : null,
         players,
         food,
         mass,
@@ -594,6 +595,23 @@ function playerSnapshot(p: Player): PlayerSnapshot {
     return {
         id: p.id,
         name: p.name,
+        hue: p.hue,
+        massTotal: Math.round(p.massTotal),
+        cells: p.cells.map((c) => ({
+            x: c.x,
+            y: c.y,
+            mass: c.mass,
+            radius: c.radius
+        }))
+    };
+}
+
+function selfSnapshot(p: Player): SelfSnapshot {
+    return {
+        id: p.id,
+        name: p.name,
+        x: p.x,
+        y: p.y,
         hue: p.hue,
         massTotal: Math.round(p.massTotal),
         cells: p.cells.map((c) => ({

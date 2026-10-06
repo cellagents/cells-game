@@ -26,7 +26,13 @@ const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const info = document.getElementById('follow-info');
 
-const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
+// Follow viewer: viewport capability + follow target. Server anchors
+// the viewport on the followed player's current viewport rectangle.
+const game = connect({
+    gameServerUrl: resolveGameServer(),
+    capabilities: ['viewport'],
+    follow: followId
+});
 
 function leaveToLobby(): void {
     try { game.disconnect(); } catch { /* ignore */ }

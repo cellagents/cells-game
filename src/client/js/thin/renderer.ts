@@ -1,5 +1,5 @@
 // Canvas renderer shared by every viewport (player, spectator, follow,
-// minimap). Draws from the serverTellPlayerMove payload shape against a
+// minimap). Draws from the protocol-1.0 Tick payload against a
 // Camera. Keeps zero state beyond the canvas, the current theme palette
 // and the last snapshot handed in; mode-specific choices (which decor
 // to include) are passed per draw call so a single Renderer instance

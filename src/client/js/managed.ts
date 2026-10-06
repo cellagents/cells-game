@@ -26,8 +26,8 @@ const renderer = new Renderer(canvas);
 // ship entities the followed player can't see. Full-map uses the
 // full stream so the whole arena renders.
 const game = followId
-    ? connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId })
-    : connect({ gameServerUrl: resolveGameServer(), data: 'full' });
+    ? connect({ gameServerUrl: resolveGameServer(), capabilities: ['viewport'], follow: followId })
+    : connect({ gameServerUrl: resolveGameServer(), capabilities: [] });
 
 // Grace redirect: if the followed id never produces a snapshot, fall
 // back to full-map by stripping ?player= and reloading. Only applies

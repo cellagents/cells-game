@@ -11,7 +11,8 @@ import { attachMinimap } from './thin/minimap';
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 
-const game = connect({ gameServerUrl: resolveGameServer(), data: 'full' });
+// Full-map spectator: no capabilities. Receives world ticks only.
+const game = connect({ gameServerUrl: resolveGameServer(), capabilities: [] });
 
 function leaveToLobby(): void {
     try { game.disconnect(); } catch { /* ignore */ }

@@ -33,8 +33,9 @@ const settings = { showBorder: false, showMass: false };
 
 const game = connect({
     gameServerUrl: resolveGameServer(),
-    role: 'player',
-    playerName
+    capabilities: ['steer', 'presence', 'viewport'],
+    name: playerName,
+    screen: { width: window.innerWidth, height: window.innerHeight }
 });
 
 function leaveToLobby(): void {
@@ -86,20 +87,17 @@ const commands: Record<string, Command> = {
 };
 
 // Game-side event wiring is registered synchronously so the critical
-// path (respawn on connect) doesn't race the /ui-config fetch. Any
-// chrome side-effect (chat system lines, overlay messages) is guarded
-// by `vp?.` so it's safe before the chrome finishes loading.
+// path doesn't race the /ui-config fetch. Any chrome side-effect
+// (chat system lines, overlay messages) is guarded by `vp?.` so it's
+// safe before the chrome finishes loading.
 //
-// Player handshake order (server-driven):
-//   1. socket connects as type=player
-//   2. client emits 'respawn' (asks the server to place us)
-//   3. server emits 'welcome(player, world)'
-//   4. connect.ts emits 'gotit(player)' back
-//   5. server starts shipping serverTellPlayerMove to this socket
+// Protocol 1.0 handshake: the connector emits `subscribe` with the
+// capability set on connect, the server replies with `welcome` and
+// starts streaming ticks immediately. Nothing else to send; respawn
+// is only for after death.
 game.on('connect', () => {
     vp?.chat?.addSystem('Connected to the game!');
     vp?.chat?.addSystem('Type <b>-help</b> for a list of commands.');
-    game.sendRespawn();
 });
 
 game.on('welcome', () => {
@@ -169,7 +167,7 @@ createViewport({
                 else vp?.chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
                 return;
             }
-            game.sendChat(playerName, text);
+            game.sendChat(text);
             vp?.chat?.addChat(playerName, text);
         }
     },

@@ -1,55 +1,65 @@
-// Socket.IO connector for every viewport (player, spectator, follow).
-// Returns a GameHandle that exposes the latest snapshot/world/leaderboard
-// state and an on() subscription primitive. Also provides a sender()
-// for the handful of client->server messages so pages don't talk to
-// socket.io directly.
+// Socket.IO connector for every viewport (player, spectator, follow,
+// managed). Speaks protocol 1.0: a single `subscribe` handshake with
+// capability flags, followed by `welcome` + `tick` streaming.
 //
-// Visibility handling: while document.hidden is true, incoming snapshot
-// and leaderboard payloads are stored on the handle but NOT emitted to
-// listeners. On the visible transition, the latest stored payload (if
-// any) is emitted exactly once. This prevents the perceived "replay"
-// after returning from a background tab, where buffered packets would
-// otherwise be delivered to subscribers as a flurry of state updates.
-// Socket.IO itself keeps running so chat and other control events are
-// still processed in real time; only the per-tick world updates are
-// coalesced.
+// Returns a GameHandle that exposes the latest snapshot/world/leader-
+// board state and an on() subscription primitive, plus a small sender
+// API (sendTarget / sendFireFood / sendSplit / ...) that pages use
+// instead of touching socket.io directly.
+//
+// Late-subscriber replay: handshake events (connect / disconnect /
+// welcome / world) are cached so a caller that attaches .on() after
+// the event has already fired still gets called (asynchronously via
+// queueMicrotask).
+//
+// Visibility handling: while document.hidden is true, incoming tick
+// and leaderboard payloads update the handle but are NOT emitted to
+// listeners. On the visible transition the latest stored payload is
+// emitted exactly once so returning to a backgrounded tab does not
+// unleash a flurry of buffered state.
 
 import { io, Socket } from 'socket.io-client';
-import type { Snapshot } from './renderer';
+import {
+    PROTOCOL_VERSION,
+    ClientEvent,
+    ServerEvent,
+    type Capability,
+    type Welcome,
+    type Reject,
+    type Tick,
+    type Leaderboard
+} from '../../../shared/protocol';
 import type { WorldSize } from './camera';
 
-export type ConnectRole = 'player' | 'spectator';
+export type { Capability } from '../../../shared/protocol';
 
 export interface ConnectOptions {
     gameServerUrl: string;
-    /** 'player' uses the player handshake (sends gotit with name/screen
-     *  dims, respawn, kick, RIP). 'spectator' uses the viewer handshake
-     *  (gotit with no args, no kick/RIP). Default: 'spectator'. */
-    role?: ConnectRole;
-    /** Spectator-only: ask for the whole map ('full') or a viewport
-     *  slice around the followed target ('viewport'). */
-    data?: 'full' | 'viewport';
-    /** Spectator-only: id of the player to follow when data='viewport'. */
-    follow?: string | null;
-    /** Player-only: nickname sanitized by the caller. Sent to the server
-     *  in the gotit handshake. */
-    playerName?: string;
+    /** The subscribe handshake payload the client sends to the server.
+     *  The caller is responsible for assembling a legal combination;
+     *  see the protocol module's `validCapabilitySet`. */
+    capabilities: Capability[];
+    /** Required when capabilities includes 'presence'. */
+    name?: string;
+    /** Required when the capability set is player/bot (presence +
+     *  viewport). Not required for follow viewers (they inherit the
+     *  followed player's viewport). */
+    screen?: { width: number; height: number };
+    /** Required when the capability set is a follow viewer
+     *  (viewport without presence). */
+    follow?: string;
 }
 
 type EventName =
     | 'connect'
     | 'disconnect'
-    /** First snapshot of self: fires once on welcome. Payload is the
-     *  server's canonical player representation (id, x, y, hue, etc.). */
     | 'welcome'
+    | 'reject'
     | 'snapshot'
     | 'world'
     | 'leaderboard'
-    /** Player-only: server told us we died (RIP). */
     | 'died'
-    /** Player-only: server kicked us; payload is the reason string. */
     | 'kick'
-    /** Player-only: round-trip reply to a ping. Payload is latency ms. */
     | 'pong';
 
 type Listener = (payload: unknown) => void;
@@ -62,48 +72,33 @@ export type DisconnectPayload = { reason: string; deliberate: boolean };
 
 export interface GameHandle {
     socket: Socket;
-    snapshot: Snapshot | null;
+    snapshot: Tick | null;
     leaderboard: Array<{ id: string; name: string | null }>;
     world: WorldSize;
-    /** Server-provided self id. Set by the welcome handler for both
-     *  player and spectator roles; players use it to key against the
-     *  snapshot's players array, which does not re-ship self info. */
+    /** Server-provided id for this subscriber. Set by the welcome
+     *  handler. Clients use it to key against the snapshot. */
     selfId: string | null;
     on(event: EventName, cb: Listener): () => void;
     disconnect(): void;
-    /** Client -> server. Target steering (heartbeat on every tick). */
+    /** Client -> server. Target steering (heartbeat). */
     sendTarget(target: { x: number; y: number }): void;
-    /** Client -> server. Eject mass. */
     sendFireFood(): void;
-    /** Client -> server. Split. */
     sendSplit(): void;
-    /** Client -> server. Resize notification (player only). */
+    /** Client -> server. Viewport resize notification. Allowed for
+     *  any viewport-capable subscriber (player or follow viewer). */
     sendWindowResized(width: number, height: number): void;
-    /** Client -> server. Respawn request (player only). */
     sendRespawn(): void;
-    /** Client -> server. Latency probe; server replies with 'pong'. */
     sendPing(): void;
-    /** Client -> server. Chat message. */
-    sendChat(sender: string, message: string): void;
+    /** Client -> server. Chat message. The server stamps the sender
+     *  from its known identity; the client cannot forge it. */
+    sendChat(message: string): void;
 }
 
 export function connect(opts: ConnectOptions): GameHandle {
-    const role: ConnectRole = opts.role ?? 'spectator';
-    const query: Record<string, string> = { type: role };
-    if (role === 'spectator') {
-        query.data = opts.data ?? 'full';
-        if (opts.follow) query.follow = opts.follow;
-    }
-
-    const socket: Socket = io(opts.gameServerUrl, { query, reconnection: true });
+    const socket: Socket = io(opts.gameServerUrl, { reconnection: true });
     const listeners = new Map<EventName, Set<Listener>>();
     let pingStartedAt = 0;
 
-    // Latest-value cache for events that fire once (or rarely) during a
-    // session. Late subscribers (e.g. the chrome fetching /ui-config
-    // during socket.io's handshake) would otherwise miss the first
-    // 'connect' and leave their status overlay stuck on. On subscribe
-    // we replay the most recent known value for the covered events.
     const lastEvent = new Map<EventName, unknown>();
     const REPLAYABLE: readonly EventName[] = ['connect', 'disconnect', 'welcome', 'world'];
     const isReplayable = (e: EventName): boolean => REPLAYABLE.indexOf(e) !== -1;
@@ -118,9 +113,6 @@ export function connect(opts: ConnectOptions): GameHandle {
             if (!listeners.has(event)) listeners.set(event, new Set());
             listeners.get(event)!.add(cb);
             if (isReplayable(event) && lastEvent.has(event)) {
-                // Fire the latest cached payload asynchronously so the
-                // caller finishes wiring (e.g. storing the returned
-                // unsubscribe fn) before the callback runs.
                 const payload = lastEvent.get(event);
                 queueMicrotask(() => cb(payload));
             }
@@ -130,24 +122,18 @@ export function connect(opts: ConnectOptions): GameHandle {
             document.removeEventListener('visibilitychange', onVisibility);
             socket.disconnect();
         },
-        sendTarget(target) { socket.emit('0', target); },
-        sendFireFood() { socket.emit('1'); },
-        sendSplit() { socket.emit('2'); },
-        sendWindowResized(screenWidth, screenHeight) {
-            if (role !== 'player') return;
-            socket.emit('windowResized', { screenWidth, screenHeight });
+        sendTarget(target) { socket.emit(ClientEvent.heartbeat, target); },
+        sendFireFood() { socket.emit(ClientEvent.fireFood); },
+        sendSplit() { socket.emit(ClientEvent.split); },
+        sendWindowResized(width, height) {
+            socket.emit(ClientEvent.windowResized, { width, height });
         },
-        sendRespawn() {
-            if (role !== 'player') return;
-            socket.emit('respawn');
-        },
+        sendRespawn() { socket.emit(ClientEvent.respawn); },
         sendPing() {
             pingStartedAt = Date.now();
-            socket.emit('pingcheck');
+            socket.emit(ClientEvent.pingcheck);
         },
-        sendChat(sender, message) {
-            socket.emit('playerChat', { sender, message });
-        }
+        sendChat(message) { socket.emit(ClientEvent.playerChat, { message }); }
     };
 
     const emit = (event: EventName, payload: unknown) => {
@@ -156,9 +142,6 @@ export function connect(opts: ConnectOptions): GameHandle {
         if (set) for (const cb of set) cb(payload);
     };
 
-    // While hidden, the two high-rate events (snapshot and leaderboard)
-    // only update the handle; they do not reach listeners. On the
-    // visible transition we flush the latest value exactly once.
     let hasPendingSnapshot = false;
     let hasPendingLeaderboard = false;
     const onVisibility = () => {
@@ -174,48 +157,40 @@ export function connect(opts: ConnectOptions): GameHandle {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    // connect/disconnect are opposites: a late subscriber must see
-    // the current state, not a stale one. Clear the other side when
-    // either fires so replay reflects "where we are right now".
     socket.on('connect', () => {
         lastEvent.delete('disconnect');
         emit('connect', null);
+        // Fire the handshake. The server rejects anything malformed
+        // via a 'reject' event + disconnect, which bubbles up through
+        // the normal disconnect path.
+        socket.emit(ClientEvent.subscribe, {
+            protocol: PROTOCOL_VERSION,
+            capabilities: opts.capabilities,
+            ...(opts.name ? { name: opts.name } : {}),
+            ...(opts.screen ? { screen: opts.screen } : {}),
+            ...(opts.follow ? { follow: opts.follow } : {})
+        });
     });
     socket.on('disconnect', (reason: string) => {
         lastEvent.delete('connect');
         emit('disconnect', { reason, deliberate: reason === 'io server disconnect' });
     });
 
-    socket.on('welcome', (playerSettings: { id?: string } | null, gameSizes: WorldSize) => {
-        handle.world = gameSizes;
-        emit('world', gameSizes);
-        if (role === 'player') {
-            // Server has placed us; stash the socket id, surface the
-            // welcome event, and ship the gotit payload so the server
-            // can finish initialising our Player and start sending
-            // serverTellPlayerMove to this socket.
-            handle.selfId = playerSettings?.id ?? null;
-            emit('welcome', playerSettings);
-            socket.emit('gotit', {
-                name: opts.playerName ?? '',
-                screenWidth: window.innerWidth,
-                screenHeight: window.innerHeight
-            });
-        } else {
-            // Spectator: upstream clients emit 'gotit' with no args.
-            emit('welcome', playerSettings);
-            socket.emit('gotit');
-        }
+    socket.on(ServerEvent.welcome, (payload: Welcome) => {
+        handle.world = payload.world;
+        handle.selfId = payload.subscriberId;
+        emit('world', payload.world);
+        emit('welcome', payload);
     });
 
-    socket.on('serverTellPlayerMove', (
-        self: Snapshot['self'],
-        players: Snapshot['players'],
-        food: Snapshot['food'],
-        mass: Snapshot['mass'],
-        viruses: Snapshot['viruses']
-    ) => {
-        handle.snapshot = { self, players, food, mass, viruses };
+    socket.on(ServerEvent.reject, (payload: Reject) => {
+        emit('reject', payload);
+        // The server also disconnects us; the normal disconnect
+        // handler picks it up.
+    });
+
+    socket.on(ServerEvent.tick, (payload: Tick) => {
+        handle.snapshot = payload;
         if (document.hidden) {
             hasPendingSnapshot = true;
             return;
@@ -223,8 +198,8 @@ export function connect(opts: ConnectOptions): GameHandle {
         emit('snapshot', handle.snapshot);
     });
 
-    socket.on('leaderboard', (data: { leaderboard?: Array<{ id: string; name: string | null }> }) => {
-        handle.leaderboard = data?.leaderboard || [];
+    socket.on(ServerEvent.leaderboard, (payload: Leaderboard) => {
+        handle.leaderboard = payload?.leaderboard || [];
         if (document.hidden) {
             hasPendingLeaderboard = true;
             return;
@@ -232,11 +207,9 @@ export function connect(opts: ConnectOptions): GameHandle {
         emit('leaderboard', handle.leaderboard);
     });
 
-    // Player-only server-to-client events. Harmless on spectator since
-    // the server never emits them to viewer sockets.
-    socket.on('RIP', () => emit('died', null));
-    socket.on('kick', (reason: string) => emit('kick', reason || ''));
-    socket.on('pongcheck', () => emit('pong', Date.now() - pingStartedAt));
+    socket.on(ServerEvent.died, () => emit('died', null));
+    socket.on(ServerEvent.kick, (payload: { reason: string }) => emit('kick', payload?.reason ?? ''));
+    socket.on(ServerEvent.pongcheck, () => emit('pong', Date.now() - pingStartedAt));
 
     return handle;
 }
