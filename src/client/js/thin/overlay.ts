@@ -9,8 +9,8 @@
 
 export interface StatusOptions {
     /** When true, show the "Back to lobby" link in the overlay. In
-     *  managed mode we hide it so the viewport doesn't offer a
-     *  self-escape route from inside an iframe. */
+     *  embedded views (e.g. /managed) we hide it so the viewport
+     *  doesn't offer a self-escape route from inside an iframe. */
     showExit: boolean;
 }
 

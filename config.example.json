@@ -43,21 +43,48 @@
         "admin": {
             "pass": "DEFAULT"
         },
-        "follow": {},
         "lobby": {
             "buttonsBefore": [],
             "buttonsAfter": [
-                {
-                    "label": "Official site",
-                    "href": "https://cellagents.dev/"
-                },
-                {
-                    "label": "About",
-                    "href": "https://cellagents.dev/about"
-                }
+                { "label": "Official site", "href": "https://cellagents.dev/" },
+                { "label": "About", "href": "https://cellagents.dev/about" }
             ]
         },
-        "player": {},
-        "spectator": {}
+        "player": {
+            "ui": {
+                "exit":        { "button": true },
+                "theme":       { "button": true },
+                "chat":        { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } },
+                "leaderboard": { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } },
+                "minimap":     { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } }
+            }
+        },
+        "spectator": {
+            "ui": {
+                "exit":        { "button": true },
+                "theme":       { "button": true },
+                "chat":        { "button": true, "defaultVisible": { "desktop": true,  "mobile": true } },
+                "leaderboard": { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } },
+                "minimap":     { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } }
+            }
+        },
+        "follow": {
+            "ui": {
+                "exit":        { "button": true },
+                "theme":       { "button": true },
+                "chat":        { "button": true, "defaultVisible": { "desktop": true,  "mobile": true } },
+                "leaderboard": { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } },
+                "minimap":     { "button": true, "defaultVisible": { "desktop": true,  "mobile": false } }
+            }
+        },
+        "managed": {
+            "ui": {
+                "exit":        { "button": false },
+                "theme":       { "button": false },
+                "chat":        { "button": false, "defaultVisible": { "desktop": false, "mobile": false } },
+                "leaderboard": { "button": false, "defaultVisible": { "desktop": false, "mobile": false } },
+                "minimap":     { "button": false, "defaultVisible": { "desktop": false, "mobile": false } }
+            }
+        }
     }
 }

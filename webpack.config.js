@@ -8,6 +8,7 @@ module.exports = (_env, argv) => {
             player: './src/client/js/player.ts',
             spectator: './src/client/js/spectator.ts',
             follow: './src/client/js/follow.ts',
+            managed: './src/client/js/managed.ts',
             admin: './src/client/js/admin.ts'
         },
         mode: isProduction ? 'production' : 'development',

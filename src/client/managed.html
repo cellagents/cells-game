@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Managed - Cells</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <!-- Managed view: embedded in a parent surface (harness iframe)
+       that owns navigation. The floating-button stack is still in
+       the DOM so the shared viewport chrome can decide what to keep;
+       by default (config.client.managed.ui) all five buttons are
+       pruned so the embedding parent is in control. -->
+  <a id="exitToMenu" class="floating-btn exit-btn" href="/" aria-label="Return to menu" title="Return to menu">×</a>
+  <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+  <button id="chatToggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat" hidden>≡</button>
+  <button id="leaderboardToggle" class="floating-btn leaderboard-btn" type="button" aria-label="Toggle leaderboard" title="Toggle leaderboard">▤</button>
+  <button id="minimapToggle" class="floating-btn minimap-btn" type="button" aria-label="Toggle minimap" title="Toggle minimap">◰</button>
+
+  <canvas id="minimap" class="minimap"></canvas>
+  <canvas id="cvs"></canvas>
+
+  <!-- Status overlay. JS fills #statusMessage and toggles [hidden] on
+       the wrapper. In managed mode the back-to-lobby link is omitted
+       by StatusOverlay because the exit action is disabled. -->
+  <div id="statusOverlay" class="status-overlay" hidden>
+    <div class="status-card">
+      <p id="statusMessage"></p>
+      <a id="statusAction" href="/" hidden>Back to lobby</a>
+    </div>
+  </div>
+  <div class="sidebar">
+    <div id="leaderboard"><span class="title">Leaderboard</span></div>
+  </div>
+  <!-- Chat container. Mounted read-only by the shared chat module
+       (enableInput:false), kept hidden by default via config. -->
+  <div id="chatbox"></div>
+  <script src="js/managed.js"></script>
+</body>
+</html>

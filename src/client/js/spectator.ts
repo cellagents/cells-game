@@ -18,7 +18,8 @@ function leaveToLobby(): void {
     setTimeout(() => { window.location.href = '/'; }, 0);
 }
 
-createViewport({
+void createViewport({
+    view: 'spectator',
     game,
     renderer,
     onLeave: leaveToLobby,

@@ -88,12 +88,45 @@ export interface AdminConfig {
     pass: string;
 }
 
-/** Placeholder sections. Empty today; present so operators can see
- *  where surface-specific knobs will land as they're added. */
+/** Per-widget rule for a view's floating-button chrome. `button: false`
+ *  omits the toggle button from the DOM AND locks the widget to its
+ *  defaultVisible value for that viewport width class (users can't
+ *  toggle it in). `defaultVisible` is split so operators can hide
+ *  heavy overlays on narrow screens without touching desktop. */
+export interface ViewUiWidget {
+    button: boolean;
+    defaultVisible: { desktop: boolean; mobile: boolean };
+}
+
+/** Rule for action-only floating buttons (exit, theme) that have no
+ *  visibility state of their own. `button: false` omits the button;
+ *  nothing else to track. If the button is forced on a view that
+ *  doesn't wire an action for it, pressing it is a no-op. */
+export interface ViewUiAction {
+    button: boolean;
+}
+
+/** All five floating buttons a viewport can surface. Theme and exit
+ *  are action-only (no visibility state); chat/leaderboard/minimap
+ *  each gate a widget. */
+export interface ViewUiConfig {
+    exit: ViewUiAction;
+    theme: ViewUiAction;
+    chat: ViewUiWidget;
+    leaderboard: ViewUiWidget;
+    minimap: ViewUiWidget;
+}
+
+/** Placeholder sections. Only ui is populated today; other surface
+ *  knobs (prediction overlays, info panels, etc.) will land here. */
 export interface ThemeConfig {}
-export interface FollowConfig {}
-export interface PlayerClientConfig {}
-export interface SpectatorConfig {}
+export interface FollowConfig { ui: ViewUiConfig }
+export interface PlayerClientConfig { ui: ViewUiConfig }
+export interface SpectatorConfig { ui: ViewUiConfig }
+/** Managed is the operator-embedded view (iframe harness surface).
+ *  Same chrome shape as the others; typical config disables all
+ *  buttons so the embedding parent stays in control. */
+export interface ManagedConfig { ui: ViewUiConfig }
 
 export interface ClientConfig {
     theme: ThemeConfig;
@@ -102,7 +135,11 @@ export interface ClientConfig {
     lobby: LobbyConfig;
     player: PlayerClientConfig;
     spectator: SpectatorConfig;
+    managed: ManagedConfig;
 }
+
+/** Views that have a `ui` section the client fetches at load time. */
+export type UiView = 'player' | 'spectator' | 'follow' | 'managed';
 
 export interface Config {
     server: ServerConfig;
