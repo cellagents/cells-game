@@ -39,16 +39,17 @@
         "newPlayerInitialPosition": "farthest"
     },
     "client": {
-        "theme": {},
+        "global": {},
         "admin": {
             "pass": "DEFAULT"
         },
         "lobby": {
-            "buttonsBefore": [],
-            "buttonsAfter": [
-                { "label": "Official site", "href": "https://cellagents.dev/" },
-                { "label": "About", "href": "https://cellagents.dev/about" }
-            ]
+            "content": {
+                "extraLinks": [
+                    { "label": "Official site", "href": "https://cellagents.dev/" },
+                    { "label": "About", "href": "https://cellagents.dev/about" }
+                ]
+            }
         },
         "player": {
             "ui": {
