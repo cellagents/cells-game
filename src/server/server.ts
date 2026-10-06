@@ -28,27 +28,28 @@ const map = new GameMap(config);
 
 const sockets: Record<string, Socket> = {};
 
-interface SpectatorEntry {
-    socketId: string;
-    mode: 'full' | 'viewport';
-    follow: string | null;
-}
-const spectators: SpectatorEntry[] = [];
-
-/** Per-socket subscriber record. Keyed by socket.id. Living alongside
- *  the legacy map.players.data / spectators[] until Day 2a merges
- *  the lists. The capability set here is the one truth about what the
- *  socket is allowed to send; the legacy entries exist only to feed
- *  the existing tick + fan-out code paths unchanged. */
+/** Per-socket subscriber record. Keyed by socket.id. This is the one
+ *  truth about what the socket is allowed to send and receive. */
 interface Subscriber {
     socketId: string;
     capabilities: Set<Capability>;
+    /** Supplied in subscribe. Spectators have null; presence
+     *  subscribers always have a non-null name (validator enforced). */
     name: string | null;
+    /** Clamped at subscribe time or whenever windowResized arrives. */
     screen: { width: number; height: number } | null;
+    /** Target subscriber id to follow; set only on viewport+follow. */
     follow: string | null;
-    /** Non-null iff capabilities contains 'presence'. Same object as
-     *  the entry inside map.players.data for now. */
+    /** Non-null iff the subscriber currently has a live cell on the
+     *  map. Cleared on death; re-populated on respawn. The record
+     *  stays alive in `subscribers` either way. */
     player: Player | null;
+    /** Last known world-space anchor used for culling. For a live
+     *  presence subscriber the current player.x/y keeps this fresh;
+     *  for a dead one it freezes at the death position. For
+     *  follow subscribers it's updated per tick from the followed
+     *  player. For full-map spectators it's unused (no culling). */
+    lastSeen: { x: number; y: number };
 }
 const subscribers: Record<string, Subscriber> = {};
 
@@ -262,7 +263,10 @@ function attachSubscriber(socket: Socket, raw: unknown): void {
         name: sub.name ?? null,
         screen: sub.screen ? clampScreen(sub.screen) : null,
         follow: sub.follow ?? null,
-        player: null
+        player: null,
+        // Default anchor to the map centre; refined per role below
+        // and kept fresh by sendUpdates.
+        lastSeen: { x: config.game.width / 2, y: config.game.height / 2 }
     };
     subscribers[socket.id] = record;
 
@@ -286,13 +290,11 @@ function attachSubscriber(socket: Socket, raw: unknown): void {
         });
         map.players.pushNew(player);
         record.player = player;
+        record.lastSeen = { x: player.x, y: player.y };
         io.emit('playerJoin', { name: player.name });
         console.log('[INFO] Player ' + player.name + ' connected (presence subscriber).');
-    } else if (role === 'follow') {
-        spectators.push({ socketId: socket.id, mode: 'viewport', follow: sub.follow ?? null });
-        io.emit('playerJoin', { name: '' });
     } else {
-        spectators.push({ socketId: socket.id, mode: 'full', follow: null });
+        // Spectator or follow viewer; neither occupies the map.
         io.emit('playerJoin', { name: '' });
     }
 
@@ -410,8 +412,6 @@ function cleanupSocket(socket: Socket, notifyOthers: boolean): void {
             console.log('[INFO] User ' + record.name + ' has disconnected');
         }
     }
-    const specIdx = spectators.findIndex((s) => s.socketId === socket.id);
-    if (specIdx > -1) spectators.splice(specIdx, 1);
 }
 
 const tickPlayer = (currentPlayer: Player) => {
@@ -475,14 +475,20 @@ const tickGame = () => {
         const playerDied = map.players.removeCell(gotEaten.playerIndex, gotEaten.cellIndex);
         if (playerDied) {
             const playerGotEaten = map.players.data[gotEaten.playerIndex];
-            // Historically clients read `playerEatenName` while the server
-            // emitted `name`. Emit both so new chat renderers (which prefer
-            // playerEatenName) show the real name, while any older
-            // subscriber reading `name` keeps working.
+            const killer = map.players.data[eater.playerIndex];
             io.emit('playerDied', {
                 name: playerGotEaten.name,
-                playerEatenName: playerGotEaten.name
+                playerEatenName: playerGotEaten.name,
+                killerName: killer?.name ?? null
             });
+            const victimRecord = subscribers[playerGotEaten.id];
+            if (victimRecord) {
+                // Freeze the culling anchor at the death spot so the
+                // dead subscriber keeps receiving the local area
+                // (self:null) until it emits respawn.
+                victimRecord.lastSeen = { x: playerGotEaten.x, y: playerGotEaten.y };
+                victimRecord.player = null;
+            }
             sockets[playerGotEaten.id].emit('RIP');
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
@@ -515,15 +521,99 @@ const gameloop = () => {
     map.balanceMass(config.game.foodMass, config.game.mass, config.game.maxFood, config.game.maxVirus);
 };
 
-const sendUpdates = () => {
-    spectators.forEach(updateSpectator);
-    map.enumerateWhatPlayersSee((playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses) => {
-        sockets[playerData.id].emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
-        if (leaderboardChanged) {
-            sendLeaderboard(sockets[playerData.id]);
-        }
-    });
+/** Compose and emit a tick for one subscriber. Centralises the three
+ *  camera semantics (presence, follow, full-map) and the dead-state
+ *  behaviour (presence record whose player is null). The outbound
+ *  wire event is still the legacy 'serverTellPlayerMove' tuple;
+ *  Day 2b renames it to a flattened 'tick'. */
+function emitTickFor(socket: Socket, record: Subscriber): void {
+    // Decide the camera anchor + screen rectangle. If no rectangle,
+    // the tick carries unculled (full-map) entities.
+    let anchor: { x: number; y: number } | null = null;
+    let screen: { width: number; height: number } | null = null;
 
+    if (record.player) {
+        // Live presence subscriber: anchor on self.
+        anchor = { x: record.player.x, y: record.player.y };
+        screen = record.screen;
+        record.lastSeen = anchor;
+    } else if (record.capabilities.has('presence')) {
+        // Dead presence subscriber (awaiting respawn). Cull around
+        // the frozen death spot so the client still sees nearby food
+        // / killers while it decides to respawn.
+        anchor = record.lastSeen;
+        screen = record.screen;
+    } else if (record.capabilities.has('viewport') && record.follow) {
+        // Follow viewer. Try to centre on the followed player; fall
+        // back to full-map if that player is gone.
+        const target = map.players.data.find((p) => p.id === record.follow);
+        if (target && target.screenWidth && target.screenHeight) {
+            anchor = { x: target.x, y: target.y };
+            screen = { width: target.screenWidth, height: target.screenHeight };
+            record.lastSeen = anchor;
+        }
+    }
+    // Else: full-map spectator (no viewport). anchor stays null.
+
+    const anchorAndScreen = anchor && screen
+        ? { anchor, screen }
+        : null;
+
+    const inView = anchorAndScreen
+        ? (e: { x: number; y: number; radius: number }) => util.testRectangleRectangle(
+            e.x, e.y, e.radius * 1.1, e.radius * 1.1,
+            anchorAndScreen.anchor.x, anchorAndScreen.anchor.y,
+            anchorAndScreen.screen.width / 2, anchorAndScreen.screen.height / 2
+        )
+        : () => true;
+
+    const visibleFood = anchorAndScreen ? map.food.data.filter(inView) : map.food.data;
+    const visibleViruses = anchorAndScreen ? map.viruses.data.filter(inView) : map.viruses.data;
+    const visibleMass = anchorAndScreen ? map.massFood.data.filter(inView) : map.massFood.data;
+    const visiblePlayers = anchorAndScreen
+        ? map.players.data
+            .filter((p) => p.cells.some((c) => inView(c)))
+            .map(playerSnapshot)
+        : map.players.data.map(playerSnapshot);
+
+    // The legacy fan-out tuple keeps slot 1 as "the self payload".
+    // For a live presence subscriber it's the player; for everyone
+    // else it's a placeholder centred on the camera anchor (or map
+    // centre for a bare spectator).
+    const selfPayload = record.player
+        ? playerSnapshot(record.player)
+        : {
+            id: socket.id,
+            name: '',
+            hue: 100,
+            massTotal: 0,
+            x: anchor ? anchor.x : config.game.width / 2,
+            y: anchor ? anchor.y : config.game.height / 2,
+            cells: []
+        };
+
+    socket.emit('serverTellPlayerMove', selfPayload, visiblePlayers, visibleFood, visibleMass, visibleViruses);
+    if (leaderboardChanged) sendLeaderboard(socket);
+}
+
+function playerSnapshot(p: Player) {
+    return {
+        x: p.x,
+        y: p.y,
+        cells: p.cells,
+        massTotal: Math.round(p.massTotal),
+        hue: p.hue,
+        id: p.id,
+        name: p.name
+    };
+}
+
+const sendUpdates = () => {
+    for (const record of Object.values(subscribers)) {
+        const socket = sockets[record.socketId];
+        if (!socket) continue;
+        emitTickFor(socket, record);
+    }
     leaderboardChanged = false;
 };
 
@@ -532,62 +622,6 @@ const sendLeaderboard = (socket: Socket) => {
         players: map.players.data.length,
         leaderboard
     });
-};
-
-const updateSpectator = (spectator: SpectatorEntry) => {
-    const socket = sockets[spectator.socketId];
-    if (!socket) return;
-
-    if (spectator.mode === 'viewport' && spectator.follow) {
-        const target = map.players.data.find((p) => p.id === spectator.follow);
-        if (target && target.screenWidth && target.screenHeight) {
-            const halfW = target.screenWidth / 2;
-            const halfH = target.screenHeight / 2;
-            const inView = (e: { x: number; y: number; radius: number }): boolean => {
-                return util.testRectangleRectangle(
-                    e.x, e.y, e.radius * 1.1, e.radius * 1.1,
-                    target.x, target.y, halfW, halfH
-                );
-            };
-            const visibleFood = map.food.data.filter(inView);
-            const visibleViruses = map.viruses.data.filter(inView);
-            const visibleMass = map.massFood.data.filter(inView);
-            const visiblePlayers = map.players.data
-                .filter((p) => p.cells.some((c) => inView(c)))
-                .map((p) => ({
-                    x: p.x, y: p.y, cells: p.cells,
-                    massTotal: Math.round(p.massTotal),
-                    hue: p.hue, id: p.id, name: p.name
-                }));
-            const playerData = {
-                x: target.x, y: target.y,
-                cells: target.cells,
-                massTotal: Math.round(target.massTotal),
-                hue: target.hue,
-                id: spectator.socketId,
-                name: ''
-            };
-            socket.emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
-            if (leaderboardChanged) sendLeaderboard(socket);
-            return;
-        }
-        // Followed player gone (or has no screen bounds yet) -> fall through
-        // to full-map rendering so the viewer sees something instead of a
-        // frozen frame.
-    }
-
-    // Full-map mode (or viewport fallback).
-    const playerData = {
-        x: config.game.width / 2,
-        y: config.game.height / 2,
-        cells: [],
-        massTotal: 0,
-        hue: 100,
-        id: spectator.socketId,
-        name: ''
-    };
-    socket.emit('serverTellPlayerMove', playerData, map.players.data, map.food.data, map.massFood.data, map.viruses.data);
-    if (leaderboardChanged) sendLeaderboard(socket);
 };
 
 setInterval(tickGame, 1000 / config.server.loopRates.physicsHz);
