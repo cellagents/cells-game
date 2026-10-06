@@ -8,6 +8,7 @@ import ChatClient from './chat-client';
 import Canvas from './canvas';
 import global from './global';
 import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
+import { attachLeaderboardToggle } from './leaderboard-toggle';
 
 // Keep the canvas state in sync with the theme (same wiring as before).
 onThemeChange((_t, colors) => {
@@ -113,6 +114,7 @@ const chatBtn = document.getElementById('chatToggle');
 if (chatBtn) chatBtn.addEventListener('click', () => {
     document.body.classList.toggle('chat-hidden');
 });
+attachLeaderboardToggle();
 
 // ESC: return to lobby. Ignore when typing in a text field so chat
 // input ESC keeps clearing the field.

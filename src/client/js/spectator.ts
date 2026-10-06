@@ -8,6 +8,7 @@ import { fullMapCamera } from './thin/camera';
 import { createChat } from './chat/chat';
 import { StatusOverlay } from './thin/overlay';
 import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
+import { attachLeaderboardToggle } from './leaderboard-toggle';
 
 function paletteFor(theme: 'light' | 'dark'): RendererPalette {
     const c = canvasColorsFor(theme);
@@ -96,6 +97,7 @@ if (chatEnabled()) {
         });
     }
 }
+attachLeaderboardToggle();
 
 function chatEnabled(): boolean {
     const raw = new URLSearchParams(window.location.search).get('chat');
