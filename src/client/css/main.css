@@ -72,16 +72,24 @@ div {
     user-select: none;
 }
 
-/* -------- Floating icon buttons (theme toggle, exit, lock) -------- */
+/* -------- Floating icon buttons (theme toggle, exit, lock) --------
+   Sized at roughly half the diameter of the mobile .control-btn so the
+   top-right stack reads as secondary chrome next to the primary touch
+   controls. Spacing follows the same clamp, keeping gaps proportional. */
+:root {
+    --floating-btn-size: clamp(32px, 6vmin, 64px);
+    --floating-btn-gap: clamp(4px, 1.5vmin, 10px);
+    --floating-btn-edge: clamp(6px, 1.5vmin, 12px);
+}
 .floating-btn {
-    position: fixed; top: 10px;
-    width: 36px; height: 36px;
+    position: fixed;
+    width: var(--floating-btn-size); height: var(--floating-btn-size);
     display: inline-flex; align-items: center; justify-content: center;
     padding: 0; margin: 0;
     border-radius: 50%;
     border: 1px solid var(--panel-border);
     background: var(--panel-bg); color: var(--panel-text);
-    font-size: 18px; line-height: 1; cursor: pointer;
+    font-size: clamp(14px, 3vmin, 28px); line-height: 1; cursor: pointer;
     z-index: 20;
     /* Normalize so glyphs with uneven baselines sit truly centered. */
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -92,14 +100,22 @@ div {
 }
 .floating-btn:hover { background: var(--accent-hover); color: #fff; text-decoration: none; }
 
-/* Right-anchored vertical stack of floating buttons.
-   Exit/lock on top (y=10), theme below (y=56), chat toggle at the
-   bottom (y=102). All share right:10. */
-.floating-btn { right: 10px; }
+/* Right-anchored vertical stack of floating buttons. Positions are
+   computed from --floating-btn-size + --floating-btn-gap so the stack
+   stays snug at every viewport. Order from top to bottom:
+   exit/lock, theme, chat, leaderboard. */
+.floating-btn { right: var(--floating-btn-edge); }
 .floating-btn.exit-btn,
-.floating-btn.lock-btn { top: 10px; }
-.floating-btn.theme-toggle { top: 56px; }
-.floating-btn.chat-btn { top: 102px; }
+.floating-btn.lock-btn { top: var(--floating-btn-edge); }
+.floating-btn.theme-toggle {
+    top: calc(var(--floating-btn-edge) + (var(--floating-btn-size) + var(--floating-btn-gap)));
+}
+.floating-btn.chat-btn {
+    top: calc(var(--floating-btn-edge) + 2 * (var(--floating-btn-size) + var(--floating-btn-gap)));
+}
+.floating-btn.leaderboard-btn {
+    top: calc(var(--floating-btn-edge) + 3 * (var(--floating-btn-size) + var(--floating-btn-gap)));
+}
 
 /* -------- Game: on-screen touch controls --------
    Circular, semi-transparent, sized against the smaller viewport
@@ -144,11 +160,15 @@ div {
 
 /* -------- Game: leaderboard widget -------- */
 body.player-mode #status {
-    position: absolute; top: 10px; right: 60px; /* leave room for theme toggle */
+    position: absolute;
+    top: var(--floating-btn-edge);
+    /* Clear the floating-btn column (edge + button width + gap). */
+    right: calc(var(--floating-btn-edge) + var(--floating-btn-size) + var(--floating-btn-gap));
     padding: 10px;
     background: var(--panel-bg); color: var(--panel-text);
     font-size: 16.1px; font-weight: bold; text-align: center;
     border-radius: 6px; border: 1px solid var(--panel-border);
+    z-index: 10;
 }
 body.player-mode #status .title { font-size: 22px; }
 body.player-mode #status .me { color: var(--title-me); font-size: 16.1px; }
@@ -364,7 +384,10 @@ body > #cvs {
     display: block; background: #111;
 }
 .sidebar {
-    position: absolute; top: 10px; right: 60px; /* room for floating-btn stack */
+    position: absolute;
+    top: var(--floating-btn-edge);
+    /* Clear the floating-btn column (edge + button width + gap). */
+    right: calc(var(--floating-btn-edge) + var(--floating-btn-size) + var(--floating-btn-gap));
     width: 280px; max-height: 90vh; overflow: auto;
     background: var(--panel-bg); color: var(--panel-text);
     border: 1px solid var(--panel-border);
@@ -419,6 +442,13 @@ body > #chatbox {
 
 /* -------- Chat visibility toggle (all canvas pages) -------- */
 body.chat-hidden #chatbox { display: none; }
+
+/* -------- Leaderboard visibility toggle (all canvas pages) --------
+   Covers all three mounts: #status (player), .sidebar (spectator),
+   #leaderboard (follow, when added via its own wrapper). */
+body.leaderboard-hidden #status,
+body.leaderboard-hidden .sidebar,
+body.leaderboard-hidden #leaderboard { display: none; }
 
 /* -------- Mobile tweaks -------- */
 @media (max-width: 800px) {

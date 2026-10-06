@@ -9,6 +9,7 @@ import { followCamera } from './thin/camera';
 import { createChat } from './chat/chat';
 import { StatusOverlay } from './thin/overlay';
 import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
+import { attachLeaderboardToggle } from './leaderboard-toggle';
 
 function paletteFor(theme: 'light' | 'dark'): RendererPalette {
     const c = canvasColorsFor(theme);
@@ -43,6 +44,7 @@ const canvas = document.getElementById('cvs') as HTMLCanvasElement;
 const renderer = new Renderer(canvas, paletteFor(currentTheme()));
 onThemeChange((t) => renderer.setPalette(paletteFor(t)));
 const info = document.getElementById('info');
+const leaderboardEl = document.getElementById('leaderboard');
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
 
@@ -138,6 +140,19 @@ if (chatEnabled()) {
             document.body.classList.toggle('chat-hidden');
         });
     }
+}
+attachLeaderboardToggle();
+
+game.on('leaderboard', (lb) => renderLeaderboard(lb as Array<{ name: string | null }>));
+
+function renderLeaderboard(lb: Array<{ name: string | null }>): void {
+    if (!leaderboardEl) return;
+    leaderboardEl.innerHTML = '<div class="title">Leaderboard</div>' + lb.slice(0, 10)
+        .map((p, i) => `<div>${i + 1}. ${escapeHtml(p.name || '-')}</div>`).join('');
+}
+
+function escapeHtml(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]));
 }
 
 function chatEnabled(): boolean {
