@@ -175,7 +175,10 @@ function mountChat(): void {
 game.on('world', (world) => renderer.setWorld(world as { width: number; height: number }));
 
 function loop(): void {
-    if (game.snapshot) {
+    // Mirror spectator: skip paint while the tab is backgrounded so we
+    // don't render stale state at the throttled rAF cadence. The thin
+    // connector coalesces snapshot/leaderboard emits during that time.
+    if (!document.hidden && game.snapshot) {
         renderer.resize();
         const target = game.snapshot.self && game.snapshot.self.cells && game.snapshot.self.cells.length > 0
             ? game.snapshot.self

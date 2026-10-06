@@ -1,6 +1,16 @@
 // Socket.IO connector for spectator/follow modes. Returns a small handle
 // with the latest snapshot, world size, leaderboard and an on()
 // subscription primitive.
+//
+// Visibility handling: while document.hidden is true, incoming snapshot
+// and leaderboard payloads are stored on the handle but NOT emitted to
+// listeners. On the visible transition, the latest stored payload (if
+// any) is emitted exactly once. This prevents the perceived "replay"
+// after returning from a background tab, where buffered packets would
+// otherwise be delivered to subscribers as a flurry of state updates.
+// Socket.IO itself keeps running so chat and other control events are
+// still processed in real time; only the per-tick world updates are
+// coalesced.
 
 import { io, Socket } from 'socket.io-client';
 import type { Snapshot } from './renderer';
@@ -47,13 +57,34 @@ export function connect({ gameServerUrl, data = 'full', follow = null }: Connect
             listeners.get(event)!.add(cb);
             return () => listeners.get(event)!.delete(cb);
         },
-        disconnect() { socket.disconnect(); }
+        disconnect() {
+            document.removeEventListener('visibilitychange', onVisibility);
+            socket.disconnect();
+        }
     };
 
     const emit = (event: EventName, payload: unknown) => {
         const set = listeners.get(event);
         if (set) for (const cb of set) cb(payload);
     };
+
+    // While hidden, the two high-rate events (snapshot and leaderboard)
+    // only update the handle; they do not reach listeners. On the
+    // visible transition we flush the latest value exactly once.
+    let hasPendingSnapshot = false;
+    let hasPendingLeaderboard = false;
+    const onVisibility = () => {
+        if (document.hidden) return;
+        if (hasPendingSnapshot && handle.snapshot) {
+            emit('snapshot', handle.snapshot);
+            hasPendingSnapshot = false;
+        }
+        if (hasPendingLeaderboard) {
+            emit('leaderboard', handle.leaderboard);
+            hasPendingLeaderboard = false;
+        }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     socket.on('connect', () => emit('connect', null));
     socket.on('disconnect', (reason: string) => {
@@ -72,11 +103,19 @@ export function connect({ gameServerUrl, data = 'full', follow = null }: Connect
 
     socket.on('serverTellPlayerMove', (self: Snapshot['self'], players: Snapshot['players'], food: Snapshot['food'], mass: Snapshot['mass'], viruses: Snapshot['viruses']) => {
         handle.snapshot = { self, players, food, mass, viruses };
+        if (document.hidden) {
+            hasPendingSnapshot = true;
+            return;
+        }
         emit('snapshot', handle.snapshot);
     });
 
     socket.on('leaderboard', (data: { leaderboard?: Array<{ id: string; name: string | null }> }) => {
         handle.leaderboard = data?.leaderboard || [];
+        if (document.hidden) {
+            hasPendingLeaderboard = true;
+            return;
+        }
         emit('leaderboard', handle.leaderboard);
     });
 
