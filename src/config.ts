@@ -22,6 +22,20 @@ export interface VirusConfig {
 
 export type NewPlayerInitialPosition = 'farthest' | 'random';
 
+export interface LobbyButton {
+    label: string;
+    href: string;
+}
+
+export interface LobbyGuiConfig {
+    buttonsBefore?: LobbyButton[];
+    buttonsAfter?: LobbyButton[];
+}
+
+export interface LobbyConfig {
+    gui?: LobbyGuiConfig;
+}
+
 export interface Config {
     host: string;
     port: number;
@@ -45,6 +59,7 @@ export interface Config {
     massLossRate: number;
     minMassLoss: number;
     dbFileName: string;
+    lobby?: LobbyConfig;
 }
 
 function envInt(name: string, fallback: number): number {

@@ -42,6 +42,27 @@ app.get('/player', (_req, res) => res.sendFile(path.join(clientRoot, 'player.htm
 app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
 
+// Public lobby config: lets the lobby page render operator-configured
+// extra buttons (links to the project site, docs, etc.) without
+// rebuilding the client bundle. Only shape-checked fields are exposed;
+// anything unexpected in config.json is dropped silently so a typo
+// cannot inject arbitrary attributes into the DOM.
+app.get('/lobby-config', (_req, res) => {
+    const gui = config.lobby?.gui;
+    const sanitize = (list: unknown): Array<{ label: string; href: string }> => {
+        if (!Array.isArray(list)) return [];
+        return list
+            .filter((b): b is { label: string; href: string } =>
+                !!b && typeof (b as { label?: unknown }).label === 'string'
+                && typeof (b as { href?: unknown }).href === 'string')
+            .map((b) => ({ label: b.label, href: b.href }));
+    };
+    res.json({
+        buttonsBefore: sanitize(gui?.buttonsBefore),
+        buttonsAfter: sanitize(gui?.buttonsAfter)
+    });
+});
+
 if (adminEnabled()) {
     app.get('/admin', (_req, res) => res.sendFile(path.join(clientRoot, 'admin.html')));
     app.use('/admin', createAdminRouter({ io, map, sockets }));

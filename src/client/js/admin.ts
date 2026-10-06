@@ -8,8 +8,8 @@ import { io, Socket } from 'socket.io-client';
 import { createChat, ChatHandle } from './chat/chat';
 import { applyTheme, currentTheme, attachThemeToggle } from './theme';
 
-const TOKEN_KEY = 'cellagents.adminToken';
-const EXPIRY_KEY = 'cellagents.adminExpiresAt';
+const TOKEN_KEY = 'cellagents.cells.adminToken';
+const EXPIRY_KEY = 'cellagents.cells.adminExpiresAt';
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour sliding
 // The admin UI is only served by its own game server, so target it directly.
 // No field surfaces this; cross-origin admin is intentionally not supported.
