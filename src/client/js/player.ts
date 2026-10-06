@@ -1,52 +1,27 @@
-// In-game surface. Reads ?name=X from the URL and auto-starts a
-// Socket.IO session as a player. Exit button and ESC navigate back to
-// the lobby at /, which tears everything down the browser way.
+// Active-player viewport. Reads ?name=X from the URL and auto-starts
+// a Socket.IO session as a player. Shares the same Renderer, Camera,
+// StatusOverlay, chat widget and chrome helpers as /spectator and
+// /follow; only the camera (follow-self at zoom 1) and the input
+// hookup are specific to this view.
+//
+// Exit button and ESC navigate back to the lobby at /, which tears
+// everything down the browser way.
 
-import io from 'socket.io-client';
-import * as render from './render';
-import ChatClient from './chat-client';
-import Canvas from './canvas';
-import global from './global';
-import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
+import { Renderer } from './thin/renderer';
+import { connect, resolveGameServer, DisconnectPayload } from './thin/connect';
+import { followCamera } from './thin/camera';
+import { attachInput } from './thin/input';
+import { StatusOverlay } from './thin/overlay';
+import { createChat, ChatHandle } from './chat/chat';
+import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, rendererPaletteFor, cycleTheme } from './theme';
 import { attachLeaderboardToggle } from './leaderboard-toggle';
 
-// Keep the canvas state in sync with the theme (same wiring as before).
-onThemeChange((_t, colors) => {
-    global.backgroundColor = colors.background;
-    global.lineColor = colors.grid;
-    global.borderColor = colors.border;
-    global.outsideArenaColor = colors.outsideArena;
-});
-const initialTheme = currentTheme();
-const initialColors = canvasColorsFor(initialTheme);
-global.backgroundColor = initialColors.background;
-global.lineColor = initialColors.grid;
-global.borderColor = initialColors.border;
-global.outsideArenaColor = initialColors.outsideArena;
-applyTheme(initialTheme);
+applyTheme(currentTheme());
 const themeBtn = document.getElementById('themeToggle');
 if (themeBtn) attachThemeToggle(themeBtn);
 
-declare global {
-    interface Window {
-        chat: any;
-        canvas: any;
-        requestAnimFrame: (cb: FrameRequestCallback) => number;
-        cancelAnimFrame: (handle: number) => void;
-    }
-}
-
-const debug = (...args: unknown[]): void => {
-    if (console && console.log) console.log(...args);
-};
-
-if (/Android|webOS|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent)) {
-    global.mobile = true;
-}
-
-// Read nickname from URL (?name=X). Lobby page validates it before
-// redirecting here, so anything that reaches this page without a name
-// is treated as "go back to the lobby".
+// Nickname validation. Lobby already enforces this, so a direct hit on
+// /player without a name is treated as "go back to the lobby".
 const params = new URLSearchParams(window.location.search);
 const rawName = params.get('name');
 if (!rawName || !/^\w+$/.test(rawName)) {
@@ -54,70 +29,45 @@ if (!rawName || !/^\w+$/.test(rawName)) {
     throw new Error('missing or invalid ?name= param; redirecting to lobby');
 }
 const playerName = rawName.substring(0, 25);
-(global as any).playerName = playerName;
-(global as any).playerType = 'player';
 
-global.screen.width = window.innerWidth;
-global.screen.height = window.innerHeight;
+const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const renderer = new Renderer(canvas, rendererPaletteFor(currentTheme()));
+onThemeChange((t) => renderer.setPalette(rendererPaletteFor(t)));
 
-let player: any = {
-    id: -1,
-    x: global.screen.width / 2,
-    y: global.screen.height / 2,
-    screenWidth: global.screen.width,
-    screenHeight: global.screen.height,
-    target: { x: global.screen.width / 2, y: global.screen.height / 2 }
-};
-(global as any).player = player;
-
-let foods: any[] = [];
-let viruses: any[] = [];
-let fireFood: any[] = [];
-let users: any[] = [];
-let leaderboard: any[] = [];
-const target = { x: player.x, y: player.y };
-(global as any).target = target;
-
-window.canvas = new Canvas();
-const c = window.canvas.cv as HTMLCanvasElement;
-const graph = c.getContext('2d') as CanvasRenderingContext2D;
-
-const playerConfig = {
-    border: 6,
-    textColor: '#FFFFFF',
-    textBorder: '#000000',
-    textBorderSize: 3,
-    defaultSize: 30
+// User-adjustable render switches controlled by chat commands. Kept
+// local; nothing persists across reloads.
+const settings = {
+    showBorder: false,
+    showMass: false
 };
 
-const socket: any = io({ query: { type: 'player' } } as any);
-(global as any).socket = socket;
-window.chat = new ChatClient();
-window.chat.socket = socket;
-window.chat.registerFunctions();
-window.canvas.socket = socket;
+const game = connect({
+    gameServerUrl: resolveGameServer(),
+    role: 'player',
+    playerName
+});
+
+// Status overlay drives connection + death feedback. Shows connecting
+// at load; reconnecting on transport drops; a terminal message on
+// server kick or RIP (with a return-to-lobby button).
+const overlay = new StatusOverlay({ showExit: true });
+overlay.show('Connecting to server...');
 
 let leaving = false;
 function leaveToLobby(): void {
     leaving = true;
     setTimeout(() => { window.location.href = '/'; }, 0);
-    try { socket.close(); } catch { /* ignore */ }
+    try { game.disconnect(); } catch { /* ignore */ }
 }
 
-// Floating buttons
 const exitBtn = document.getElementById('exitToMenu');
 if (exitBtn) exitBtn.addEventListener('click', (ev) => {
     ev.preventDefault();
     leaveToLobby();
 });
-const chatBtn = document.getElementById('chatToggle');
-if (chatBtn) chatBtn.addEventListener('click', () => {
-    document.body.classList.toggle('chat-hidden');
-});
-attachLeaderboardToggle();
 
-// ESC: return to lobby. Ignore when typing in a text field so chat
-// input ESC keeps clearing the field.
+// ESC returns to the lobby. Skip when the user is typing in a text
+// field so chat input ESC can clear it instead.
 window.addEventListener('keydown', (ev: KeyboardEvent) => {
     if (ev.key !== 'Escape') return;
     const t = ev.target as HTMLElement | null;
@@ -126,183 +76,211 @@ window.addEventListener('keydown', (ev: KeyboardEvent) => {
     leaveToLobby();
 });
 
-// Mobile touch controls
+const chatBtn = document.getElementById('chatToggle');
+if (chatBtn) chatBtn.addEventListener('click', () => {
+    document.body.classList.toggle('chat-hidden');
+});
+attachLeaderboardToggle();
+
+// Mobile touch controls. The buttons are only visible on coarse
+// pointers (phones/tablets) via CSS; the clicks still work on desktop
+// if the elements are hovered but are harmless because the keyboard
+// shortcuts exist for the same actions.
 document.getElementById('feed')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    socket.emit('1');
-    window.canvas.reenviar = false;
+    game.sendFireFood();
 });
 document.getElementById('split')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    socket.emit('2');
-    window.canvas.reenviar = false;
+    game.sendSplit();
 });
 
-function handleDisconnect(): void {
-    if (leaving) return; // navigating away deliberately; don't paint anything
-    try { socket.close(); } catch { /* ignore */ }
-    if (!global.kicked) {
-        render.drawErrorMessage('Disconnected!', graph, global.screen);
+// Resize handling: tell the server our new window size so viewport
+// culling stays accurate, and reset the canvas CSS size so the next
+// renderer.resize() picks up the new client dimensions.
+function onResize(): void {
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    game.sendWindowResized(window.innerWidth, window.innerHeight);
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// Chat. The shared widget handles the socket subscriptions; local
+// commands (leading dash) are intercepted here and never leave the
+// client.
+interface Command { description: string; run: (args: string[]) => void }
+const commands: Record<string, Command> = {
+    ping: { description: 'Check your latency.', run: () => game.sendPing() },
+    dark: {
+        description: 'Toggle dark mode.',
+        run: () => {
+            const next = cycleTheme();
+            applyTheme(next);
+            chat?.addSystem(next === 'dark' ? 'Dark mode enabled.' : 'Dark mode disabled.');
+        }
+    },
+    border: {
+        description: 'Toggle the arena border.',
+        run: () => {
+            settings.showBorder = !settings.showBorder;
+            chat?.addSystem(settings.showBorder ? 'Showing border.' : 'Hiding border.');
+        }
+    },
+    mass: {
+        description: 'Toggle mass numbers on cells.',
+        run: () => {
+            settings.showMass = !settings.showMass;
+            chat?.addSystem(settings.showMass ? 'Showing mass.' : 'Hiding mass.');
+        }
+    },
+    help: {
+        description: 'List the chat commands.',
+        run: () => {
+            for (const name of Object.keys(commands)) {
+                chat?.addSystem(`-${name}: ${commands[name].description}`);
+            }
+        }
+    }
+};
+
+let chat: ChatHandle | null = null;
+// Chat is suppressed on mobile viewports via CSS (the chatbox is
+// hidden and the toggle button is hidden too), but we still mount
+// the module so system messages have somewhere to go that we can
+// surface later if the user widens the window.
+const chatContainer = document.getElementById('chatbox') as HTMLElement | null;
+if (chatContainer) {
+    chat = createChat({
+        container: chatContainer,
+        socket: game.socket,
+        events: { chat: true, system: true, join: true, leave: true, death: true },
+        selfName: playerName,
+        maxLines: 10,
+        enableInput: true,
+        inputPlaceholder: 'Chat here...',
+        onSendMessage: (text) => {
+            if (text.startsWith('-')) {
+                const parts = text.substring(1).split(' ');
+                const cmd = commands[parts[0]];
+                if (cmd) {
+                    cmd.run(parts.slice(1));
+                } else {
+                    chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
+                }
+                return;
+            }
+            game.sendChat(playerName, text);
+            chat?.addChat(playerName, text);
+        }
+    });
+    if (chat.input) {
+        chat.input.addEventListener('keyup', (ev) => {
+            if ((ev as KeyboardEvent).key === 'Escape') {
+                chat!.input!.value = '';
+                canvas.focus();
+            }
+        });
     }
 }
 
-socket.on('pongcheck', () => {
-    const latency = Date.now() - global.startPingTime;
-    debug('Latency: ' + latency + 'ms');
-    window.chat.addSystemLine('Ping: ' + latency + 'ms');
+game.on('connect', () => {
+    overlay.hide();
+    chat?.addSystem('Connected to the game!');
+    chat?.addSystem('Type <b>-help</b> for a list of commands.');
+});
+game.on('disconnect', (payload) => {
+    if (leaving) return;
+    const d = payload as DisconnectPayload;
+    if (d.deliberate) {
+        overlay.show(`Session ended: ${d.reason}`, true);
+    } else {
+        overlay.show('Reconnecting to server...');
+    }
 });
 
-socket.on('connect_error', handleDisconnect);
-socket.on('disconnect', handleDisconnect);
-
-socket.on('welcome', (playerSettings: any, gameSizes: any) => {
-    player = playerSettings;
-    player.name = playerName;
-    player.screenWidth = global.screen.width;
-    player.screenHeight = global.screen.height;
-    player.target = window.canvas.target;
-    (global as any).player = player;
-    window.chat.player = player;
-    socket.emit('gotit', player);
-    global.gameStart = true;
-    window.chat.addSystemLine('Connected to the game!');
-    window.chat.addSystemLine('Type <b>-help</b> for a list of commands.');
-    c.focus();
-    global.game.width = gameSizes.width;
-    global.game.height = gameSizes.height;
-    resize();
+// Welcome: server sent us our canonical player row (id, hue, name...).
+// Immediately request a respawn so the server places us into the world.
+game.on('welcome', () => {
+    game.sendRespawn();
+    canvas.focus();
 });
 
-socket.emit('respawn');
+game.on('world', (world) => renderer.setWorld(world as { width: number; height: number }));
 
-// playerDied, playerDisconnect, playerJoin, serverMSG and
-// serverSendPlayerChat are now handled by the shared chat module.
+game.on('kick', (payload) => {
+    const reason = payload as string;
+    overlay.show(reason ? `You were kicked: ${reason}` : 'You were kicked.', true);
+});
 
-socket.on('leaderboard', (data: any) => {
-    leaderboard = data.leaderboard;
-    let status = '<span class="title">Leaderboard</span>';
-    for (let i = 0; i < leaderboard.length; i++) {
-        status += '<br />';
-        const name = leaderboard[i].name;
-        const label = name && name.length !== 0 ? name : 'An unnamed cell';
-        if (leaderboard[i].id == player.id) {
-            status += `<span class="me">${i + 1}. ${label}</span>`;
+game.on('died', () => {
+    overlay.show('You died.', true);
+    // Keep the user on the page briefly so the message is readable, then
+    // bounce back to the lobby for a clean restart (matches 2.x behaviour).
+    window.setTimeout(() => { if (!leaving) leaveToLobby(); }, 2500);
+});
+
+game.on('pong', (ms) => chat?.addSystem(`Ping: ${ms as number}ms`));
+
+// Leaderboard renders into #status to match the pre-port markup.
+const leaderboardEl = document.getElementById('status') as HTMLElement | null;
+game.on('leaderboard', (lb) => {
+    const rows = lb as Array<{ id: string; name: string | null }>;
+    if (!leaderboardEl) return;
+    let html = '<span class="title">Leaderboard</span>';
+    for (let i = 0; i < rows.length; i++) {
+        const name = rows[i].name;
+        const label = name && name.length > 0 ? name : 'An unnamed cell';
+        const safe = escapeHtml(label);
+        if (rows[i].id === game.selfId) {
+            html += `<br /><span class="me">${i + 1}. ${safe}</span>`;
         } else {
-            status += `${i + 1}. ${label}`;
+            html += `<br />${i + 1}. ${safe}`;
         }
     }
-    document.getElementById('status')!.innerHTML = status;
+    leaderboardEl.innerHTML = html;
 });
 
-socket.on('serverTellPlayerMove', (playerData: any, userData: any, foodsList: any, massList: any, virusList: any) => {
-    player.x = playerData.x;
-    player.y = playerData.y;
-    player.hue = playerData.hue;
-    player.massTotal = playerData.massTotal;
-    player.cells = playerData.cells;
-    users = userData;
-    foods = foodsList;
-    viruses = virusList;
-    fireFood = massList;
-});
-
-socket.on('RIP', () => {
-    global.gameStart = false;
-    render.drawErrorMessage('You died!', graph, global.screen);
-    window.setTimeout(() => { window.location.href = '/'; }, 2500);
-});
-
-socket.on('kick', (reason: string) => {
-    global.gameStart = false;
-    global.kicked = true;
-    render.drawErrorMessage(
-        reason ? 'You were kicked for: ' + reason : 'You were kicked!',
-        graph, global.screen
-    );
-    socket.close();
-});
-
-const getPosition = (entity: { x: number; y: number }, p: { x: number; y: number }, screen: { width: number; height: number }) => ({
-    x: entity.x - p.x + screen.width / 2,
-    y: entity.y - p.y + screen.height / 2
-});
-
-window.requestAnimFrame = (function () {
-    return window.requestAnimationFrame ||
-        (window as any).webkitRequestAnimationFrame ||
-        (window as any).mozRequestAnimationFrame ||
-        (window as any).msRequestAnimationFrame ||
-        function (cb: FrameRequestCallback) {
-            return window.setTimeout(cb as unknown as TimerHandler, 1000 / 60) as unknown as number;
-        };
-})();
-
-window.cancelAnimFrame = (function () {
-    return window.cancelAnimationFrame || (window as any).mozCancelAnimationFrame;
-})();
-
-function animloop(): void {
-    (global as any).animLoopHandle = window.requestAnimFrame(animloop);
-    gameLoop();
+function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]));
 }
 
-function gameLoop(): void {
-    if (!global.gameStart) return;
-    graph.fillStyle = global.backgroundColor;
-    graph.fillRect(0, 0, global.screen.width, global.screen.height);
+// Input module. The canvas is tab-focusable and will handle its own
+// mouse/touch/keyboard; direction keys override the pointer. Enter
+// focuses the chat input so the user can type without reaching for
+// the mouse.
+const input = attachInput({
+    canvas,
+    game,
+    onChatFocus: () => chat?.input?.focus()
+});
 
-    render.drawGrid(global, player, global.screen, graph);
-    const arenaBorders = {
-        left: global.screen.width / 2 - player.x,
-        right: global.screen.width / 2 + global.game.width - player.x,
-        top: global.screen.height / 2 - player.y,
-        bottom: global.screen.height / 2 + global.game.height - player.y
-    };
-    render.drawOutsideArena(arenaBorders, global.outsideArenaColor, global.screen, graph);
-    foods.forEach(food => {
-        const position = getPosition(food, player, global.screen);
-        render.drawFood(position, food, graph);
-    });
-    fireFood.forEach(ff => {
-        const position = getPosition(ff, player, global.screen);
-        render.drawFireFood(position, ff, playerConfig, graph);
-    });
-    viruses.forEach(virus => {
-        const position = getPosition(virus, player, global.screen);
-        render.drawVirus(position, virus, graph);
-    });
-
-    if (global.borderDraw) {
-        render.drawBorder(arenaBorders, global.borderColor, graph);
+function loop(): void {
+    // Skip paint while hidden: the connector coalesces incoming state
+    // and the first paint on return will be fresh.
+    if (!document.hidden && game.snapshot) {
+        renderer.resize();
+        // Camera follows self at unit scale. The snapshot's self row is
+        // the server's canonical view of our player (position after
+        // the latest tick); using it directly keeps the view glued
+        // under the cursor regardless of which cells happen to be in
+        // the players array this frame.
+        const self = game.snapshot.self;
+        const target = self ? { x: self.x, y: self.y } : null;
+        const cam = followCamera(target, canvas, game.world, 1);
+        renderer.draw(game.snapshot, cam, {
+            grid: true,
+            outsideArena: true,
+            border: settings.showBorder,
+            showMass: settings.showMass,
+            foodHues: true,
+            labels: true
+        });
+        // Send our target vector every tick, acting as both input and
+        // heartbeat; the server kicks sockets that go silent.
+        input.reheartbeat();
     }
-
-    const cellsToDraw: any[] = [];
-    for (let i = 0; i < users.length; i++) {
-        const color = 'hsl(' + users[i].hue + ', 100%, 50%)';
-        const borderColor = 'hsl(' + users[i].hue + ', 100%, 45%)';
-        for (let j = 0; j < users[i].cells.length; j++) {
-            cellsToDraw.push({
-                color,
-                borderColor,
-                mass: users[i].cells[j].mass,
-                name: users[i].name,
-                radius: users[i].cells[j].radius,
-                x: users[i].cells[j].x - player.x + global.screen.width / 2,
-                y: users[i].cells[j].y - player.y + global.screen.height / 2
-            });
-        }
-    }
-    cellsToDraw.sort((a, b) => a.mass - b.mass);
-    render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, arenaBorders, graph);
-
-    socket.emit('0', window.canvas.target);
+    requestAnimationFrame(loop);
 }
 
-animloop();
-
-window.addEventListener('resize', resize);
-function resize(): void {
-    player.screenWidth = c.width = global.screen.width = window.innerWidth;
-    player.screenHeight = c.height = global.screen.height = window.innerHeight;
-    socket.emit('windowResized', { screenWidth: global.screen.width, screenHeight: global.screen.height });
-}
+loop();
