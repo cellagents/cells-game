@@ -6,8 +6,8 @@
   <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <button id="themeToggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
-  <button id="btn-logout-icon" class="floating-btn lock-btn" type="button" aria-label="Lock dashboard" title="Lock (Esc)" hidden>×</button>
+  <button id="theme-toggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
+  <button id="lock-toggle" class="floating-btn lock-btn" type="button" aria-label="Lock dashboard" title="Lock (Esc)" hidden>×</button>
 
   <section id="login-view" class="menu-wrapper" hidden>
     <div class="menu-card">
@@ -37,16 +37,16 @@
           Players
           <button id="btn-refresh" class="btn btn-sm btn-primary" type="button">refresh</button>
         </div>
-        <div id="players" class="players-list">loading...</div>
+        <div id="admin-players" class="players-list">loading...</div>
       </section>
 
       <section class="overlay-panel">
         <div class="panel-title">Raw state</div>
-        <pre id="state">loading...</pre>
+        <pre id="admin-state">loading...</pre>
       </section>
     </div>
 
-    <div id="status" class="status" hidden></div>
+    <div id="admin-status" class="status" hidden></div>
   </section>
 
   <script src="js/admin.js"></script>

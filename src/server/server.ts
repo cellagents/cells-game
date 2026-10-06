@@ -28,7 +28,7 @@ interface SpectatorEntry {
 const spectators: SpectatorEntry[] = [];
 
 app.use(express.json());
-const INIT_MASS_LOG = util.mathLog(config.defaultPlayerMass, config.slowBase);
+const INIT_MASS_LOG = util.mathLog(config.game.defaultPlayerMass, config.game.slowBase);
 
 type LeaderboardEntry = { id: string; name: string | null };
 let leaderboard: LeaderboardEntry[] = [];
@@ -41,14 +41,76 @@ app.get('/', (_req, res) => res.sendFile(path.join(clientRoot, 'lobby.html')));
 app.get('/player', (_req, res) => res.sendFile(path.join(clientRoot, 'player.html')));
 app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
+app.get('/managed', (_req, res) => res.sendFile(path.join(clientRoot, 'managed.html')));
 
-// Public lobby config: lets the lobby page render operator-configured
-// extra buttons (links to the project site, docs, etc.) without
-// rebuilding the client bundle. Only shape-checked fields are exposed;
-// anything unexpected in config.json is dropped silently so a typo
-// cannot inject arbitrary attributes into the DOM.
+// Per-view UI config for the client's floating-button chrome. The
+// client fetches this at page load; see thin/chrome.ts for the
+// consumption side. Every field is sanitised so a malformed config
+// surfaces as safe defaults rather than breaking the chrome row.
+// Each view returns only the buttons that apply to it:
+//   lobby:  theme
+//   admin:  theme + lock
+//   canvas: exit + theme + chat/leaderboard/minimap (as widgets)
+const VIEW_WHITELIST = ['lobby', 'admin', 'player', 'spectator', 'follow', 'managed'] as const;
+type UiViewName = typeof VIEW_WHITELIST[number];
+const ACTION_DEFAULT = { button: true };
+const WIDGET_DEFAULT = { button: true, defaultVisible: { desktop: true, mobile: false } };
+app.get('/ui-config', (req, res) => {
+    const view = typeof req.query.view === 'string' ? req.query.view : '';
+    if (!(VIEW_WHITELIST as readonly string[]).includes(view)) {
+        res.status(400).json({ error: 'unknown view' });
+        return;
+    }
+    const section = (config.client as unknown as Record<UiViewName, { ui?: unknown }>)[view as UiViewName];
+    const ui = (section && typeof section === 'object' ? (section as { ui?: unknown }).ui : null) as
+        | Record<string, unknown>
+        | null;
+    const rawOf = (name: string) =>
+        (ui && typeof ui === 'object' ? (ui as Record<string, unknown>)[name] : null) as
+            | Record<string, unknown> | null;
+    const action = (name: string) => {
+        const raw = rawOf(name);
+        if (!raw) return { ...ACTION_DEFAULT };
+        return { button: typeof raw.button === 'boolean' ? raw.button : ACTION_DEFAULT.button };
+    };
+    const widget = (name: string) => {
+        const raw = rawOf(name);
+        if (!raw) return { ...WIDGET_DEFAULT };
+        const dv = (raw.defaultVisible && typeof raw.defaultVisible === 'object'
+            ? raw.defaultVisible as Record<string, unknown>
+            : {}) as Record<string, unknown>;
+        return {
+            button: typeof raw.button === 'boolean' ? raw.button : WIDGET_DEFAULT.button,
+            defaultVisible: {
+                desktop: typeof dv.desktop === 'boolean' ? dv.desktop : WIDGET_DEFAULT.defaultVisible.desktop,
+                mobile: typeof dv.mobile === 'boolean' ? dv.mobile : WIDGET_DEFAULT.defaultVisible.mobile
+            }
+        };
+    };
+    if (view === 'lobby') {
+        res.json({ theme: action('theme') });
+        return;
+    }
+    if (view === 'admin') {
+        res.json({ theme: action('theme'), lock: action('lock') });
+        return;
+    }
+    res.json({
+        exit: action('exit'),
+        theme: action('theme'),
+        chat: widget('chat'),
+        leaderboard: widget('leaderboard'),
+        minimap: widget('minimap')
+    });
+});
+
+// Public lobby content: lets the lobby page render operator-authored
+// extras (links to the project site, docs, etc.) without rebuilding
+// the client bundle. Only shape-checked fields are exposed; anything
+// unexpected in config.json is dropped silently so a typo cannot
+// inject arbitrary attributes into the DOM.
 app.get('/lobby-config', (_req, res) => {
-    const gui = config.lobby?.gui;
+    const content = config.client.lobby?.content;
     const sanitize = (list: unknown): Array<{ label: string; href: string }> => {
         if (!Array.isArray(list)) return [];
         return list
@@ -58,8 +120,7 @@ app.get('/lobby-config', (_req, res) => {
             .map((b) => ({ label: b.label, href: b.href }));
     };
     res.json({
-        buttonsBefore: sanitize(gui?.buttonsBefore),
-        buttonsAfter: sanitize(gui?.buttonsAfter)
+        extraLinks: sanitize(content?.extraLinks)
     });
 });
 
@@ -99,8 +160,8 @@ io.on('connection', (socket: Socket) => {
 });
 
 function generateSpawnpoint() {
-    const radius = util.massToRadius(config.defaultPlayerMass);
-    return getPosition(config.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
+    const radius = util.massToRadius(config.game.defaultPlayerMass);
+    return getPosition(config.game.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
 }
 
 interface ClientPlayerData {
@@ -114,7 +175,7 @@ const addPlayer = (socket: Socket) => {
 
     socket.on('gotit', (clientPlayerData: ClientPlayerData) => {
         console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
-        currentPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
+        currentPlayer.init(generateSpawnpoint(), config.game.defaultPlayerMass);
 
         if (map.players.findIndexByID(socket.id) > -1) {
             console.log('[INFO] Player ID is already connected, kicking.');
@@ -148,8 +209,8 @@ const addPlayer = (socket: Socket) => {
     socket.on('respawn', () => {
         map.players.removePlayerByID(currentPlayer.id);
         socket.emit('welcome', currentPlayer, {
-            width: config.gameWidth,
-            height: config.gameHeight
+            width: config.game.width,
+            height: config.game.height
         });
         console.log('[INFO] User ' + currentPlayer.name + ' has respawned');
     });
@@ -164,7 +225,7 @@ const addPlayer = (socket: Socket) => {
         const _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
         const _message = data.message.replace(/(<([^>]+)>)/ig, '');
 
-        if (config.logChat) {
+        if (config.server.logChat) {
             console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
         }
 
@@ -187,17 +248,17 @@ const addPlayer = (socket: Socket) => {
 
     socket.on('1', () => {
         // Fire food.
-        const minCellMass = config.defaultPlayerMass + config.fireFood;
+        const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
         for (let i = 0; i < currentPlayer.cells.length; i++) {
             if (currentPlayer.cells[i].mass >= minCellMass) {
-                currentPlayer.changeCellMass(i, -config.fireFood);
-                map.massFood.addNew(currentPlayer, i, config.fireFood);
+                currentPlayer.changeCellMass(i, -config.game.fireFood);
+                map.massFood.addNew(currentPlayer, i, config.game.fireFood);
             }
         }
     });
 
     socket.on('2', () => {
-        currentPlayer.userSplit(config.limitSplit, config.defaultPlayerMass);
+        currentPlayer.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
     });
 };
 
@@ -225,19 +286,19 @@ const addSpectator = (socket: Socket) => {
     });
 
     socket.emit("welcome", {}, {
-        width: config.gameWidth,
-        height: config.gameHeight
+        width: config.game.width,
+        height: config.game.height
     });
 };
 
 const tickPlayer = (currentPlayer: Player) => {
-    if (config.maxHeartbeatInterval > 0 &&
-        currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
-        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.');
+    if (config.server.maxHeartbeatInterval > 0 &&
+        currentPlayer.lastHeartbeat < new Date().getTime() - config.server.maxHeartbeatInterval) {
+        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.server.maxHeartbeatInterval + ' ago.');
         sockets[currentPlayer.id].disconnect();
     }
 
-    currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG);
+    currentPlayer.move(config.game.slowBase, config.game.width, config.game.height, INIT_MASS_LOG);
 
     const isEntityInsideCircle = (point: { x: number; y: number }, circle: SAT.Circle): boolean => {
         return SAT.pointInCircle(new Vector(point.x, point.y), circle);
@@ -273,15 +334,15 @@ const tickPlayer = (currentPlayer: Player) => {
 
         map.food.delete(eatenFoodIndexes);
         map.massFood.remove(eatenMassIndexes);
-        massGained += (eatenFoodIndexes.length * config.foodMass);
+        massGained += (eatenFoodIndexes.length * config.game.foodMass);
         currentPlayer.changeCellMass(cellIndex, massGained);
     }
-    currentPlayer.virusSplit(cellsToSplit, config.limitSplit, config.defaultPlayerMass);
+    currentPlayer.virusSplit(cellsToSplit, config.game.limitSplit, config.game.defaultPlayerMass);
 };
 
 const tickGame = () => {
     map.players.data.forEach(tickPlayer);
-    map.massFood.move(config.gameWidth, config.gameHeight);
+    map.massFood.move(config.game.width, config.game.height);
 
     map.players.handleCollisions((gotEaten, eater) => {
         const cellGotEaten = map.players.getCell(gotEaten.playerIndex, gotEaten.cellIndex);
@@ -325,10 +386,10 @@ const calculateLeaderboard = () => {
 const gameloop = () => {
     if (map.players.data.length > 0) {
         calculateLeaderboard();
-        map.players.shrinkCells(config.massLossRate, config.defaultPlayerMass, config.minMassLoss);
+        map.players.shrinkCells(config.game.massLossRate, config.game.defaultPlayerMass, config.game.minMassLoss);
     }
 
-    map.balanceMass(config.foodMass, config.gameMass, config.maxFood, config.maxVirus);
+    map.balanceMass(config.game.foodMass, config.game.mass, config.game.maxFood, config.game.maxVirus);
 };
 
 const sendUpdates = () => {
@@ -394,8 +455,8 @@ const updateSpectator = (spectator: SpectatorEntry) => {
 
     // Full-map mode (or viewport fallback).
     const playerData = {
-        x: config.gameWidth / 2,
-        y: config.gameHeight / 2,
+        x: config.game.width / 2,
+        y: config.game.height / 2,
         cells: [],
         massTotal: 0,
         hue: 100,
@@ -406,8 +467,8 @@ const updateSpectator = (spectator: SpectatorEntry) => {
     if (leaderboardChanged) sendLeaderboard(socket);
 };
 
-setInterval(tickGame, 1000 / 60);
-setInterval(gameloop, 1000);
-setInterval(sendUpdates, 1000 / config.networkUpdateFactor);
+setInterval(tickGame, 1000 / config.server.loopRates.physicsHz);
+setInterval(gameloop, 1000 / config.server.loopRates.metabolismHz);
+setInterval(sendUpdates, 1000 / config.server.loopRates.fanOutHz);
 
-server.listen(config.port, config.host, () => console.log('[DEBUG] Listening on ' + config.host + ':' + config.port));
+server.listen(config.server.port, config.server.host, () => console.log('[DEBUG] Listening on ' + config.server.host + ':' + config.server.port));

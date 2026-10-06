@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Spectate - Cells</title>
+  <title>Managed - Cells</title>
   <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <!-- Floating button stack, same shape as the game and admin pages.
-       Exit sends you back to the start menu; theme toggles light/dark;
-       chat toggle hides/shows the chat overlay (hidden entirely when
-       chat was disabled via ?chat=off). -->
+  <!-- Managed view: embedded in a parent surface (harness iframe)
+       that owns navigation. The floating-button stack is still in
+       the DOM so the shared viewport chrome can decide what to keep;
+       by default (config.client.managed.ui) all five buttons are
+       pruned so the embedding parent is in control. -->
   <a id="exit-to-menu" class="floating-btn exit-btn" href="/" aria-label="Return to menu" title="Return to menu">×</a>
   <button id="theme-toggle" class="floating-btn theme-toggle" type="button" aria-label="Toggle theme">◐</button>
   <button id="chat-toggle" class="floating-btn chat-btn" type="button" aria-label="Toggle chat" title="Toggle chat" hidden>≡</button>
@@ -17,11 +18,11 @@
   <button id="minimap-toggle" class="floating-btn minimap-btn" type="button" aria-label="Toggle minimap" title="Toggle minimap">◰</button>
 
   <canvas id="minimap" class="minimap"></canvas>
-
   <canvas id="game-canvas"></canvas>
+
   <!-- Status overlay. JS fills #status-message and toggles [hidden] on
-       the wrapper. Sits above chat but below the floating button stack
-       so the user can still toggle theme / exit while disconnected. -->
+       the wrapper. In managed mode the back-to-lobby link is omitted
+       by StatusOverlay because the exit action is disabled. -->
   <div id="status-overlay" class="status-overlay" hidden>
     <div class="status-card">
       <p id="status-message"></p>
@@ -31,9 +32,9 @@
   <div class="leaderboard-panel">
     <div id="leaderboard"><span class="title">Leaderboard</span></div>
   </div>
-  <!-- Mounted by spectator.js when ?chat is not disabled. The shared
-       chat module fills this container with its own markup. -->
+  <!-- Chat container. Mounted read-only by the shared chat module
+       (enableInput:false), kept hidden by default via config. -->
   <div id="chatbox"></div>
-  <script src="js/spectator.js"></script>
+  <script src="js/managed.js"></script>
 </body>
 </html>

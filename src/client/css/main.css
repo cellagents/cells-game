@@ -7,7 +7,7 @@
 html.theme-light {
     --bg: #fafaf7;
     --bg-game: rgba(0, 0, 0, 0.06);
-    --panel-bg: rgba(255, 255, 255, 0.9);
+    --panel-bg: rgba(255, 255, 255, 0.8);
     --panel-text: #1f2328;
     --panel-border: #d0d7de;
     --chat-input-border: #d0d7de;
@@ -34,7 +34,7 @@ html.theme-light {
 html.theme-dark {
     --bg: #0f1419;
     --bg-game: rgba(0, 0, 0, 0.4);
-    --panel-bg: rgba(22, 26, 32, 0.8);
+    --panel-bg: rgba(22, 26, 32, 0.7);
     --panel-text: #e6e8eb;
     --panel-border: rgba(255, 255, 255, 0.08);
     --chat-input-border: #30363d;
@@ -116,6 +116,9 @@ div {
 .floating-btn.leaderboard-btn {
     top: calc(var(--floating-btn-edge) + 3 * (var(--floating-btn-size) + var(--floating-btn-gap)));
 }
+.floating-btn.minimap-btn {
+    top: calc(var(--floating-btn-edge) + 4 * (var(--floating-btn-size) + var(--floating-btn-gap)));
+}
 
 /* -------- Game: on-screen touch controls --------
    Circular, semi-transparent, sized against the smaller viewport
@@ -153,13 +156,13 @@ div {
 /* Only show the touch controls to an active player on a coarse-pointer
    device (phones, tablets). Spectators never see them (no actions to
    take), and desktop mouse users have keyboard shortcuts (space / w). */
-#mobile { display: none; }
+#touch-controls { display: none; }
 @media (pointer: coarse) {
-    body.player-mode #mobile { display: block; }
+    body.player-mode #touch-controls { display: block; }
 }
 
 /* -------- Game: leaderboard widget -------- */
-body.player-mode #status {
+body.player-mode #leaderboard {
     position: absolute;
     top: var(--floating-btn-edge);
     /* Clear the floating-btn column (edge + button width + gap). */
@@ -170,8 +173,8 @@ body.player-mode #status {
     border-radius: 6px; border: 1px solid var(--panel-border);
     z-index: 10;
 }
-body.player-mode #status .title { font-size: 22px; }
-body.player-mode #status .me { color: var(--title-me); font-size: 16.1px; }
+body.player-mode #leaderboard .title { font-size: 22px; }
+body.player-mode #leaderboard .me { color: var(--title-me); font-size: 16.1px; }
 
 /* -------- Shared chatbox -------- */
 .chatbox {
@@ -294,36 +297,36 @@ a.btn:hover { text-decoration: none; }
     box-shadow: none;
 }
 
-.lobby-extra-buttons:empty { display: none; }
+.lobby-extra-links:empty { display: none; }
 
-/* Legacy game start-menu ids reuse the above styles. */
-#startMenuWrapper { position: absolute; inset: 0; z-index: 2; }
-#startMenuWrapper, #settings {
+/* -------- Lobby start-menu card -------- */
+#start-menu-wrapper { position: absolute; inset: 0; z-index: 2; }
+#start-menu-wrapper, #settings {
     overflow: hidden; transition: max-height 1s;
 }
-#startMenu {
+#start-menu {
     width: 100%; max-width: 400px;
     margin: 100px auto 0; padding: 24px;
     background: var(--menu-card-bg); color: var(--menu-card-text);
     border-radius: 8px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
-#startMenu p {
+#start-menu p {
     padding: 0; text-align: center; font-size: 22px; font-weight: bold;
     margin: 0 0 16px;
 }
-#playerNameInput {
+#player-name-input {
     width: 100%; padding: 10px;
     background: transparent; color: inherit;
     border: solid 1px var(--menu-input-border); border-radius: 5px;
     outline: none; text-align: center; margin-bottom: 10px;
     transition: box-shadow 0.3s, border 0.3s;
 }
-#playerNameInput:focus { border-color: var(--menu-input-border-focus); box-shadow: 0 0 3px 1px rgba(0,0,0,0.1); }
-#startMenu .input-error { color: #c33; opacity: 0; font-size: 12px; display: block; margin-bottom: 8px; }
+#player-name-input:focus { border-color: var(--menu-input-border-focus); box-shadow: 0 0 3px 1px rgba(0,0,0,0.1); }
+#start-menu .input-error { color: #c33; opacity: 0; font-size: 12px; display: block; margin-bottom: 8px; }
 #settings { max-height: 0; }
-#startMenu h3 { padding-bottom: 0; margin-bottom: 0; }
-#startMenu ul { margin: 10px; padding: 10px; margin-top: 0; }
+#start-menu h3 { padding-bottom: 0; margin-bottom: 0; }
+#start-menu ul { margin: 10px; padding: 10px; margin-top: 0; }
 
 /* -------- Admin dashboard -------- */
 .admin-dashboard {
@@ -399,14 +402,14 @@ a.btn:hover { text-decoration: none; }
 
 /* -------- Spectator / follow surfaces --------
    The /spectator and /follow pages run a thin WebGL-less renderer on a
-   full-viewport canvas with a leaderboard sidebar and an optional
-   info overlay. Chat (when enabled) sits bottom-left at body level,
-   outside any wrapper. */
-body > #cvs {
+   full-viewport canvas with a leaderboard panel and an optional info
+   overlay. Chat (when enabled) sits bottom-left at body level, outside
+   any wrapper. */
+body > #game-canvas {
     position: absolute; inset: 0; width: 100vw; height: 100vh;
     display: block; background: #111;
 }
-.sidebar {
+.leaderboard-panel {
     position: absolute;
     top: var(--floating-btn-edge);
     /* Clear the floating-btn column (edge + button width + gap). */
@@ -417,17 +420,16 @@ body > #cvs {
     padding: 12px; border-radius: 8px; font-size: 13px;
     z-index: 10;
 }
-.sidebar .title { font-weight: bold; margin-bottom: 6px; display: block; }
-#info {
+.leaderboard-panel .title { font-weight: bold; margin-bottom: 6px; display: block; }
+#follow-info {
     position: absolute; bottom: 10px; left: 10px;
     padding: 6px 10px;
     background: var(--panel-bg); color: var(--panel-text);
     border: 1px solid var(--panel-border);
     border-radius: 6px; font-size: 13px; z-index: 10;
 }
-/* Body-level chatbox (spectator/follow) sits bottom-left just like the
-   game chatbox does inside #gameAreaWrapper. Floating buttons keep
-   their higher z-index and stay reachable on top. */
+/* Body-level chatbox (spectator/follow) sits bottom-left. Floating
+   buttons keep their higher z-index and stay reachable on top. */
 body > #chatbox {
     position: absolute; width: 300px; height: 320px;
     bottom: 10px; left: 10px;
@@ -466,12 +468,29 @@ body > #chatbox {
 /* -------- Chat visibility toggle (all canvas pages) -------- */
 body.chat-hidden #chatbox { display: none; }
 
+/* -------- Minimap (all three viewports) --------
+   Top-left overlay sized to roughly match the chat window below it.
+   Backed by its own <canvas id="minimap"> rendered through a thin
+   Renderer with fullMapCamera; see thin/minimap.ts. The canvas is a
+   direct body child so the z-index stacks the same way the chat
+   overlay does. */
+canvas.minimap {
+    position: absolute;
+    top: 10px; left: 10px;
+    width: 300px; height: 300px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    z-index: 10;
+    pointer-events: none;
+}
+body.minimap-hidden canvas.minimap { display: none; }
+
 /* -------- Leaderboard visibility toggle (all canvas pages) --------
-   Covers all three mounts: #status (player), .sidebar (spectator),
-   #leaderboard (follow, when added via its own wrapper). */
-body.leaderboard-hidden #status,
-body.leaderboard-hidden .sidebar,
-body.leaderboard-hidden #leaderboard { display: none; }
+   Covers both mounts: #leaderboard (direct id on player page) and the
+   .leaderboard-panel wrapper on spectator/follow/managed. */
+body.leaderboard-hidden #leaderboard,
+body.leaderboard-hidden .leaderboard-panel { display: none; }
 
 /* -------- Mobile tweaks -------- */
 @media (max-width: 800px) {

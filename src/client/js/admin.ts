@@ -7,6 +7,7 @@
 import { io, Socket } from 'socket.io-client';
 import { createChat, ChatHandle } from './chat/chat';
 import { applyTheme, currentTheme, attachThemeToggle } from './theme';
+import { fetchUiConfig, pruneButton } from './thin/chrome';
 
 const TOKEN_KEY = 'cellagents.cells.adminToken';
 const EXPIRY_KEY = 'cellagents.cells.adminExpiresAt';
@@ -23,11 +24,15 @@ const loginTokenInput = document.getElementById('login-token') as HTMLInputEleme
 const loginStatusEl = document.getElementById('login-status') as HTMLElement;
 
 const sessionExpiryEl = document.getElementById('session-expiry') as HTMLElement;
-const statusEl = document.getElementById('status') as HTMLElement;
-const stateEl = document.getElementById('state') as HTMLElement;
-const playersEl = document.getElementById('players') as HTMLElement;
+const statusEl = document.getElementById('admin-status') as HTMLElement;
+const stateEl = document.getElementById('admin-state') as HTMLElement;
+const playersEl = document.getElementById('admin-players') as HTMLElement;
 const chatboxEl = document.getElementById('chatbox') as HTMLElement;
-const lockBtn = document.getElementById('btn-logout-icon') as HTMLButtonElement | null;
+// Populated by the UI config fetch below. Admin starts without any
+// chrome wired; the fetch resolves early (before login completes) so
+// buttons are available by the time showAdmin() reveals them.
+let lockBtn: HTMLButtonElement | null = null;
+let lockEnabled = true;
 
 let refreshTimer: number | null = null;
 let expiryTimer: number | null = null;
@@ -35,8 +40,20 @@ let logSocket: Socket | null = null;
 let chat: ChatHandle | null = null;
 
 applyTheme(currentTheme());
-const themeBtn = document.getElementById('themeToggle');
-if (themeBtn) attachThemeToggle(themeBtn);
+
+fetchUiConfig('admin').then((ui) => {
+    pruneButton('theme-toggle', ui.theme.button);
+    pruneButton('lock-toggle', ui.lock.button);
+    const themeBtn = ui.theme.button ? document.getElementById('theme-toggle') : null;
+    if (themeBtn) attachThemeToggle(themeBtn);
+    lockBtn = ui.lock.button ? document.getElementById('lock-toggle') as HTMLButtonElement | null : null;
+    lockEnabled = ui.lock.button;
+    if (lockBtn) lockBtn.addEventListener('click', () => showLogin('Locked.'));
+    // Reveal the lock button only when the admin view is already up,
+    // mirroring the pre-config behaviour where the glyph stayed hidden
+    // on the login card.
+    if (lockBtn && !adminView.hidden) lockBtn.hidden = false;
+});
 
 function getToken(): string | null {
     const token = sessionStorage.getItem(TOKEN_KEY);
@@ -229,14 +246,15 @@ async function kick(name: string): Promise<void> {
 }
 
 loginForm.addEventListener('submit', handleLoginSubmit);
-if (lockBtn) lockBtn.addEventListener('click', () => showLogin('Locked.'));
 document.getElementById('btn-refresh')!.addEventListener('click', () => refreshState());
 
 // Global ESC: lock the dashboard. Ignore ESC while the user is typing
 // (chat input, token field, any editable) so field-level ESC can still
-// cancel input where that's wired.
+// cancel input where that's wired. ESC is gated by the same ui.lock
+// config as the button so operators can disable both at once.
 window.addEventListener('keydown', (ev: KeyboardEvent) => {
     if (ev.key !== 'Escape') return;
+    if (!lockEnabled) return;
     const t = ev.target as HTMLElement | null;
     const tag = t && t.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
