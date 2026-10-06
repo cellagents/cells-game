@@ -12,7 +12,7 @@ import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
 import { attachInput } from './thin/input';
 import { attachMinimap } from './thin/minimap';
-import { createViewport } from './thin/viewport';
+import { createViewport, ViewportHandle } from './thin/viewport';
 import { applyTheme, cycleTheme } from './theme';
 
 // Nickname validation. Lobby already enforces this, so a direct hit on
@@ -42,6 +42,11 @@ function leaveToLobby(): void {
     try { game.disconnect(); } catch { /* ignore */ }
 }
 
+// vp is populated after the async chrome setup finishes. Event
+// handlers that reference it guard with ?. so they're safe to run
+// even if a socket event sneaks in during the fetch window.
+let vp: ViewportHandle | null = null;
+
 // Chat command set. Toggles the local render switches / theme and
 // surfaces latency over the chat log. Keyed by name so new commands
 // are just a one-liner.
@@ -53,67 +58,67 @@ const commands: Record<string, Command> = {
         run: () => {
             const next = cycleTheme();
             applyTheme(next);
-            vp.chat?.addSystem(next === 'dark' ? 'Dark mode enabled.' : 'Dark mode disabled.');
+            vp?.chat?.addSystem(next === 'dark' ? 'Dark mode enabled.' : 'Dark mode disabled.');
         }
     },
     border: {
         description: 'Toggle the arena border.',
         run: () => {
             settings.showBorder = !settings.showBorder;
-            vp.chat?.addSystem(settings.showBorder ? 'Showing border.' : 'Hiding border.');
+            vp?.chat?.addSystem(settings.showBorder ? 'Showing border.' : 'Hiding border.');
         }
     },
     mass: {
         description: 'Toggle mass numbers on cells.',
         run: () => {
             settings.showMass = !settings.showMass;
-            vp.chat?.addSystem(settings.showMass ? 'Showing mass.' : 'Hiding mass.');
+            vp?.chat?.addSystem(settings.showMass ? 'Showing mass.' : 'Hiding mass.');
         }
     },
     help: {
         description: 'List the chat commands.',
         run: () => {
             for (const name of Object.keys(commands)) {
-                vp.chat?.addSystem(`-${name}: ${commands[name].description}`);
+                vp?.chat?.addSystem(`-${name}: ${commands[name].description}`);
             }
         }
     }
 };
 
-const vp = createViewport({
-    game,
-    renderer,
-    onLeave: leaveToLobby,
-    chat: { chat: true, system: true, join: true, leave: true, death: true },
-    chatConfig: {
-        selfName: playerName,
-        maxLines: 10,
-        enableInput: true,
-        inputPlaceholder: 'Chat here...',
-        onSendMessage: (text) => {
-            if (text.startsWith('-')) {
-                const parts = text.substring(1).split(' ');
-                const cmd = commands[parts[0]];
-                if (cmd) cmd.run();
-                else vp.chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
-                return;
-            }
-            game.sendChat(playerName, text);
-            vp.chat?.addChat(playerName, text);
-        }
-    },
-    leaderboardEl: document.getElementById('status'),
-    highlightId: () => game.selfId
+// Game-side event wiring is registered synchronously so the critical
+// path (respawn on connect) doesn't race the /ui-config fetch. Any
+// chrome side-effect (chat system lines, overlay messages) is guarded
+// by `vp?.` so it's safe before the chrome finishes loading.
+//
+// Player handshake order (server-driven):
+//   1. socket connects as type=player
+//   2. client emits 'respawn' (asks the server to place us)
+//   3. server emits 'welcome(player, world)'
+//   4. connect.ts emits 'gotit(player)' back
+//   5. server starts shipping serverTellPlayerMove to this socket
+game.on('connect', () => {
+    vp?.chat?.addSystem('Connected to the game!');
+    vp?.chat?.addSystem('Type <b>-help</b> for a list of commands.');
+    game.sendRespawn();
 });
 
-if (vp.chat?.input) {
-    vp.chat.input.addEventListener('keyup', (ev) => {
-        if ((ev as KeyboardEvent).key === 'Escape') {
-            vp.chat!.input!.value = '';
-            canvas.focus();
-        }
-    });
-}
+game.on('welcome', () => {
+    canvas.focus();
+});
+
+game.on('kick', (payload) => {
+    const reason = payload as string;
+    vp?.overlay.show(reason ? `You were kicked: ${reason}` : 'You were kicked.', true);
+});
+
+game.on('died', () => {
+    vp?.overlay.show('You died.', true);
+    // Keep the user on the page briefly so the message is readable,
+    // then bounce back to the lobby for a clean restart.
+    window.setTimeout(() => { vp?.leave() ?? leaveToLobby(); }, 2500);
+});
+
+game.on('pong', (ms) => vp?.chat?.addSystem(`Ping: ${ms as number}ms`));
 
 // Mobile touch controls. Visible on coarse pointers via CSS; harmless
 // on desktop because the keyboard shortcuts cover the same actions.
@@ -137,48 +142,50 @@ function onResize(): void {
 window.addEventListener('resize', onResize);
 onResize();
 
-// Player handshake order (server-driven):
-//   1. socket connects as type=player
-//   2. client emits 'respawn' (asks the server to place us)
-//   3. server emits 'welcome(player, world)'
-//   4. connect.ts emits 'gotit(player)' back
-//   5. server starts shipping serverTellPlayerMove to this socket
-//
-// So the respawn request goes out on connect, not on welcome. The
-// welcome event here is just a notification; the connector has
-// already stashed selfId and sent gotit by the time it fires.
-game.on('connect', () => {
-    vp.chat?.addSystem('Connected to the game!');
-    vp.chat?.addSystem('Type <b>-help</b> for a list of commands.');
-    game.sendRespawn();
-});
-
-game.on('welcome', () => {
-    canvas.focus();
-});
-
-game.on('kick', (payload) => {
-    const reason = payload as string;
-    vp.overlay.show(reason ? `You were kicked: ${reason}` : 'You were kicked.', true);
-});
-
-game.on('died', () => {
-    vp.overlay.show('You died.', true);
-    // Keep the user on the page briefly so the message is readable,
-    // then bounce back to the lobby for a clean restart. vp.leave()
-    // is idempotent so clicking exit sooner is fine.
-    window.setTimeout(() => vp.leave(), 2500);
-});
-
-game.on('pong', (ms) => vp.chat?.addSystem(`Ping: ${ms as number}ms`));
-
 const input = attachInput({
     canvas,
     game,
-    onChatFocus: () => vp.chat?.input?.focus()
+    onChatFocus: () => vp?.chat?.input?.focus()
 });
 
 attachMinimap({ game });
+
+createViewport({
+    view: 'player',
+    game,
+    renderer,
+    onLeave: leaveToLobby,
+    chat: { chat: true, system: true, join: true, leave: true, death: true },
+    chatConfig: {
+        selfName: playerName,
+        maxLines: 10,
+        enableInput: true,
+        inputPlaceholder: 'Chat here...',
+        onSendMessage: (text) => {
+            if (text.startsWith('-')) {
+                const parts = text.substring(1).split(' ');
+                const cmd = commands[parts[0]];
+                if (cmd) cmd.run();
+                else vp?.chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
+                return;
+            }
+            game.sendChat(playerName, text);
+            vp?.chat?.addChat(playerName, text);
+        }
+    },
+    leaderboardEl: document.getElementById('status'),
+    highlightId: () => game.selfId
+}).then((handle) => {
+    vp = handle;
+    if (vp.chat?.input) {
+        vp.chat.input.addEventListener('keyup', (ev) => {
+            if ((ev as KeyboardEvent).key === 'Escape') {
+                vp!.chat!.input!.value = '';
+                canvas.focus();
+            }
+        });
+    }
+});
 
 function loop(): void {
     if (!document.hidden && game.snapshot) {

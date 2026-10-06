@@ -2,6 +2,9 @@
 // (data=viewport). Camera centers on the followed self with a modest
 // zoom. Chat is shown by default; disable with ?chat=off (also accepts
 // 0/false/no).
+//
+// For the embedded-iframe harness surface, use /managed instead:
+// it shares this stack but with chrome locked off via config.
 
 import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer } from './thin/connect';
@@ -11,14 +14,11 @@ import { attachMinimap } from './thin/minimap';
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
-const managedRaw = params.get('managed');
-const managed = managedRaw !== null && ['1', 'true', 'yes', 'on'].includes(managedRaw.toLowerCase());
 
 // Without a target to follow there's nothing to render; bounce to
-// /spectator so an embedding surface (harness iframe) still shows a
-// sensible full-map view.
+// /spectator so the user sees the whole game instead of a dead page.
 if (!followId) {
-    window.location.href = managed ? '/spectator?managed=1' : '/spectator';
+    window.location.href = '/spectator';
     throw new Error('redirecting: no ?player= on /follow');
 }
 
@@ -33,7 +33,8 @@ function leaveToLobby(): void {
     setTimeout(() => { window.location.href = '/'; }, 0);
 }
 
-createViewport({
+void createViewport({
+    view: 'follow',
     game,
     renderer,
     onLeave: leaveToLobby,
@@ -44,11 +45,10 @@ createViewport({
 
 attachMinimap({ game });
 
-// Non-managed grace window: if the server has not emitted a snapshot
-// whose self.id matches our followId within the last GRACE_MS,
-// treat the target as gone and redirect to /spectator so the user
-// sees the whole game instead of a stale frame. Managed mode leaves
-// this to the parent surface (harness).
+// Grace window: if the server hasn't emitted a snapshot whose self.id
+// matches our followId within the last GRACE_MS, treat the target as
+// gone and redirect to /spectator so the user sees the whole game
+// instead of a stale frame.
 const GRACE_MS = 3000;
 let lastMatchAt = Date.now();
 let connected = false;
@@ -57,14 +57,12 @@ game.on('disconnect', () => { connected = false; });
 game.on('snapshot', (snap: any) => {
     if (snap && snap.self && snap.self.id === followId) lastMatchAt = Date.now();
 });
-if (!managed) {
-    const graceCheck = window.setInterval(() => {
-        if (connected && Date.now() - lastMatchAt > GRACE_MS) {
-            window.clearInterval(graceCheck);
-            window.location.href = '/spectator';
-        }
-    }, 500);
-}
+const graceCheck = window.setInterval(() => {
+    if (connected && Date.now() - lastMatchAt > GRACE_MS) {
+        window.clearInterval(graceCheck);
+        window.location.href = '/spectator';
+    }
+}, 500);
 
 function chatEnabled(): boolean {
     const raw = params.get('chat');

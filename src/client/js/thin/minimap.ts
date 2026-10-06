@@ -4,15 +4,15 @@
 // (same palette, same food/virus/player colors, same cell outlines).
 //
 // Mounted via the <canvas id="minimap"> element in the viewport HTML
-// and controlled by the #minimapToggle floating button; toggled with
-// the body.minimap-hidden class and defaulted off on narrow viewports.
+// and controlled by the body.minimap-hidden class owned by the
+// viewport chrome (createViewport prunes the toggle button and sets
+// the initial visibility per config). This module just skips painting
+// when the body class is on and wires the toggle button to flip it.
 
 import { Renderer } from './renderer';
 import type { GameHandle } from './connect';
 import { fullMapCamera } from './camera';
 import { currentTheme, onThemeChange, rendererPaletteFor } from '../theme';
-
-const MOBILE_MAX_WIDTH = 800;
 
 export interface MinimapOptions {
     /** Game connector shared with the main viewport. We read snapshot /
@@ -20,20 +20,16 @@ export interface MinimapOptions {
     game: GameHandle;
     /** Optional id of the canvas element. Defaults to 'minimap'. */
     canvasId?: string;
-    /** Optional id of the toggle button. Defaults to 'minimapToggle'. */
+    /** Optional id of the toggle button. Defaults to 'minimapToggle'.
+     *  If the viewport chrome pruned the button, no wiring happens. */
     toggleId?: string;
 }
 
 export function attachMinimap(opts: MinimapOptions): void {
     const canvas = document.getElementById(opts.canvasId ?? 'minimap') as HTMLCanvasElement | null;
-    const toggle = document.getElementById(opts.toggleId ?? 'minimapToggle');
     if (!canvas) return;
 
-    // Default-hide on narrow viewports so the minimap doesn't fight the
-    // chat overlay for screen real estate on phones.
-    if (window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches) {
-        document.body.classList.add('minimap-hidden');
-    }
+    const toggle = document.getElementById(opts.toggleId ?? 'minimapToggle');
     if (toggle) {
         toggle.addEventListener('click', () => {
             document.body.classList.toggle('minimap-hidden');
@@ -43,9 +39,6 @@ export function attachMinimap(opts: MinimapOptions): void {
     const renderer = new Renderer(canvas, rendererPaletteFor(currentTheme()));
     onThemeChange((t) => renderer.setPalette(rendererPaletteFor(t)));
 
-    // The minimap uses the game's world size (updated via the main
-    // viewport subscription on 'world'). We mirror from game.world on
-    // each draw so a race on load doesn't leave us at the default.
     function loop(): void {
         if (!document.hidden
             && !document.body.classList.contains('minimap-hidden')
@@ -53,7 +46,6 @@ export function attachMinimap(opts: MinimapOptions): void {
             renderer.world = opts.game.world;
             renderer.resize();
             renderer.draw(opts.game.snapshot, fullMapCamera(canvas!, opts.game.world), {
-                // No decor on the minimap; it should read at a glance.
                 grid: false,
                 outsideArena: false,
                 border: true,
