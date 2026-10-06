@@ -41,8 +41,8 @@ export function randomInRange(from: number, to: number): number {
 // field; callers that need one (e.g. uniformPosition) attach it themselves.
 export function randomPosition(radius: number): Point {
     return {
-        x: randomInRange(radius, cfg.gameWidth - radius),
-        y: randomInRange(radius, cfg.gameHeight - radius)
+        x: randomInRange(radius, cfg.game.width - radius),
+        y: randomInRange(radius, cfg.game.height - radius)
     };
 }
 

@@ -33,8 +33,8 @@ export class Map {
     players: playerUtils.PlayerManager;
 
     constructor(config: Config) {
-        this.food = new foodUtils.FoodManager(config.foodMass, config.foodUniformDisposition);
-        this.viruses = new virusUtils.VirusManager(config.virus);
+        this.food = new foodUtils.FoodManager(config.game.foodMass, config.game.foodUniformDisposition);
+        this.viruses = new virusUtils.VirusManager(config.game.virus);
         this.massFood = new massFoodUtils.MassFoodManager();
         this.players = new playerUtils.PlayerManager();
     }

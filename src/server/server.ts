@@ -28,7 +28,7 @@ interface SpectatorEntry {
 const spectators: SpectatorEntry[] = [];
 
 app.use(express.json());
-const INIT_MASS_LOG = util.mathLog(config.defaultPlayerMass, config.slowBase);
+const INIT_MASS_LOG = util.mathLog(config.game.defaultPlayerMass, config.game.slowBase);
 
 type LeaderboardEntry = { id: string; name: string | null };
 let leaderboard: LeaderboardEntry[] = [];
@@ -48,7 +48,7 @@ app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.htm
 // anything unexpected in config.json is dropped silently so a typo
 // cannot inject arbitrary attributes into the DOM.
 app.get('/lobby-config', (_req, res) => {
-    const gui = config.lobby?.gui;
+    const lobby = config.client.lobby;
     const sanitize = (list: unknown): Array<{ label: string; href: string }> => {
         if (!Array.isArray(list)) return [];
         return list
@@ -58,8 +58,8 @@ app.get('/lobby-config', (_req, res) => {
             .map((b) => ({ label: b.label, href: b.href }));
     };
     res.json({
-        buttonsBefore: sanitize(gui?.buttonsBefore),
-        buttonsAfter: sanitize(gui?.buttonsAfter)
+        buttonsBefore: sanitize(lobby?.buttonsBefore),
+        buttonsAfter: sanitize(lobby?.buttonsAfter)
     });
 });
 
@@ -99,8 +99,8 @@ io.on('connection', (socket: Socket) => {
 });
 
 function generateSpawnpoint() {
-    const radius = util.massToRadius(config.defaultPlayerMass);
-    return getPosition(config.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
+    const radius = util.massToRadius(config.game.defaultPlayerMass);
+    return getPosition(config.game.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
 }
 
 interface ClientPlayerData {
@@ -114,7 +114,7 @@ const addPlayer = (socket: Socket) => {
 
     socket.on('gotit', (clientPlayerData: ClientPlayerData) => {
         console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
-        currentPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
+        currentPlayer.init(generateSpawnpoint(), config.game.defaultPlayerMass);
 
         if (map.players.findIndexByID(socket.id) > -1) {
             console.log('[INFO] Player ID is already connected, kicking.');
@@ -148,8 +148,8 @@ const addPlayer = (socket: Socket) => {
     socket.on('respawn', () => {
         map.players.removePlayerByID(currentPlayer.id);
         socket.emit('welcome', currentPlayer, {
-            width: config.gameWidth,
-            height: config.gameHeight
+            width: config.game.width,
+            height: config.game.height
         });
         console.log('[INFO] User ' + currentPlayer.name + ' has respawned');
     });
@@ -164,7 +164,7 @@ const addPlayer = (socket: Socket) => {
         const _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
         const _message = data.message.replace(/(<([^>]+)>)/ig, '');
 
-        if (config.logChat) {
+        if (config.server.logChat) {
             console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
         }
 
@@ -187,17 +187,17 @@ const addPlayer = (socket: Socket) => {
 
     socket.on('1', () => {
         // Fire food.
-        const minCellMass = config.defaultPlayerMass + config.fireFood;
+        const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
         for (let i = 0; i < currentPlayer.cells.length; i++) {
             if (currentPlayer.cells[i].mass >= minCellMass) {
-                currentPlayer.changeCellMass(i, -config.fireFood);
-                map.massFood.addNew(currentPlayer, i, config.fireFood);
+                currentPlayer.changeCellMass(i, -config.game.fireFood);
+                map.massFood.addNew(currentPlayer, i, config.game.fireFood);
             }
         }
     });
 
     socket.on('2', () => {
-        currentPlayer.userSplit(config.limitSplit, config.defaultPlayerMass);
+        currentPlayer.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
     });
 };
 
@@ -225,19 +225,19 @@ const addSpectator = (socket: Socket) => {
     });
 
     socket.emit("welcome", {}, {
-        width: config.gameWidth,
-        height: config.gameHeight
+        width: config.game.width,
+        height: config.game.height
     });
 };
 
 const tickPlayer = (currentPlayer: Player) => {
-    if (config.maxHeartbeatInterval > 0 &&
-        currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
-        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.');
+    if (config.server.maxHeartbeatInterval > 0 &&
+        currentPlayer.lastHeartbeat < new Date().getTime() - config.server.maxHeartbeatInterval) {
+        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.server.maxHeartbeatInterval + ' ago.');
         sockets[currentPlayer.id].disconnect();
     }
 
-    currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG);
+    currentPlayer.move(config.game.slowBase, config.game.width, config.game.height, INIT_MASS_LOG);
 
     const isEntityInsideCircle = (point: { x: number; y: number }, circle: SAT.Circle): boolean => {
         return SAT.pointInCircle(new Vector(point.x, point.y), circle);
@@ -273,15 +273,15 @@ const tickPlayer = (currentPlayer: Player) => {
 
         map.food.delete(eatenFoodIndexes);
         map.massFood.remove(eatenMassIndexes);
-        massGained += (eatenFoodIndexes.length * config.foodMass);
+        massGained += (eatenFoodIndexes.length * config.game.foodMass);
         currentPlayer.changeCellMass(cellIndex, massGained);
     }
-    currentPlayer.virusSplit(cellsToSplit, config.limitSplit, config.defaultPlayerMass);
+    currentPlayer.virusSplit(cellsToSplit, config.game.limitSplit, config.game.defaultPlayerMass);
 };
 
 const tickGame = () => {
     map.players.data.forEach(tickPlayer);
-    map.massFood.move(config.gameWidth, config.gameHeight);
+    map.massFood.move(config.game.width, config.game.height);
 
     map.players.handleCollisions((gotEaten, eater) => {
         const cellGotEaten = map.players.getCell(gotEaten.playerIndex, gotEaten.cellIndex);
@@ -325,10 +325,10 @@ const calculateLeaderboard = () => {
 const gameloop = () => {
     if (map.players.data.length > 0) {
         calculateLeaderboard();
-        map.players.shrinkCells(config.massLossRate, config.defaultPlayerMass, config.minMassLoss);
+        map.players.shrinkCells(config.game.massLossRate, config.game.defaultPlayerMass, config.game.minMassLoss);
     }
 
-    map.balanceMass(config.foodMass, config.gameMass, config.maxFood, config.maxVirus);
+    map.balanceMass(config.game.foodMass, config.game.mass, config.game.maxFood, config.game.maxVirus);
 };
 
 const sendUpdates = () => {
@@ -394,8 +394,8 @@ const updateSpectator = (spectator: SpectatorEntry) => {
 
     // Full-map mode (or viewport fallback).
     const playerData = {
-        x: config.gameWidth / 2,
-        y: config.gameHeight / 2,
+        x: config.game.width / 2,
+        y: config.game.height / 2,
         cells: [],
         massTotal: 0,
         hue: 100,
@@ -406,8 +406,8 @@ const updateSpectator = (spectator: SpectatorEntry) => {
     if (leaderboardChanged) sendLeaderboard(socket);
 };
 
-setInterval(tickGame, 1000 / 60);
-setInterval(gameloop, 1000);
-setInterval(sendUpdates, 1000 / config.networkUpdateFactor);
+setInterval(tickGame, 1000 / config.server.loopRates.physicsHz);
+setInterval(gameloop, 1000 / config.server.loopRates.metabolismHz);
+setInterval(sendUpdates, 1000 / config.server.loopRates.fanOutHz);
 
-server.listen(config.port, config.host, () => console.log('[DEBUG] Listening on ' + config.host + ':' + config.port));
+server.listen(config.server.port, config.server.host, () => console.log('[DEBUG] Listening on ' + config.server.host + ':' + config.server.port));
