@@ -129,7 +129,12 @@ function escapeHtml(s: string): string {
 }
 
 function loop(): void {
-    if (game.snapshot) {
+    // Skip rendering while the tab is backgrounded. The browser already
+    // throttles rAF to ~1Hz, but drawing stale state wastes work and
+    // can leave the canvas on an old frame when we return. The thin
+    // connector also stops emitting snapshots while hidden, so the
+    // first paint after visibilitychange is guaranteed to be fresh.
+    if (!document.hidden && game.snapshot) {
         renderer.resize();
         const cam = fullMapCamera(canvas, game.world);
         renderer.draw(game.snapshot, cam);
