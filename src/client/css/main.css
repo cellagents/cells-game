@@ -297,7 +297,7 @@ a.btn:hover { text-decoration: none; }
     box-shadow: none;
 }
 
-.lobby-extra-buttons:empty { display: none; }
+.lobby-extra-links:empty { display: none; }
 
 /* Legacy game start-menu ids reuse the above styles. */
 #startMenuWrapper { position: absolute; inset: 0; z-index: 2; }

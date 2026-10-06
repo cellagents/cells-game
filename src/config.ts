@@ -72,14 +72,22 @@ export interface GameConfig {
     newPlayerInitialPosition: NewPlayerInitialPosition;
 }
 
-export interface LobbyButton {
+export interface LobbyLink {
     label: string;
     href: string;
 }
 
+/** Lobby content: operator-authored page body additions. `ui` is
+ *  reserved for canvas-interface knobs (floating buttons, overlays,
+ *  minimap); the lobby is a plain form, so its operator customisation
+ *  lives under `content`. Links are the only field today; copy and
+ *  settings will land as siblings as they're added. */
+export interface LobbyContentConfig {
+    extraLinks: LobbyLink[];
+}
+
 export interface LobbyConfig {
-    buttonsBefore?: LobbyButton[];
-    buttonsAfter?: LobbyButton[];
+    content: LobbyContentConfig;
 }
 
 export interface AdminConfig {

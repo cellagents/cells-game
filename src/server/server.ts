@@ -100,8 +100,13 @@ app.get('/ui-config', (req, res) => {
     });
 });
 
+// Public lobby content: lets the lobby page render operator-authored
+// extras (links to the project site, docs, etc.) without rebuilding
+// the client bundle. Only shape-checked fields are exposed; anything
+// unexpected in config.json is dropped silently so a typo cannot
+// inject arbitrary attributes into the DOM.
 app.get('/lobby-config', (_req, res) => {
-    const lobby = config.client.lobby;
+    const content = config.client.lobby?.content;
     const sanitize = (list: unknown): Array<{ label: string; href: string }> => {
         if (!Array.isArray(list)) return [];
         return list
@@ -111,8 +116,7 @@ app.get('/lobby-config', (_req, res) => {
             .map((b) => ({ label: b.label, href: b.href }));
     };
     res.json({
-        buttonsBefore: sanitize(lobby?.buttonsBefore),
-        buttonsAfter: sanitize(lobby?.buttonsAfter)
+        extraLinks: sanitize(content?.extraLinks)
     });
 });
 
