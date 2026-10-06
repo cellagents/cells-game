@@ -1,3 +1,113 @@
+# Review resolution (2026-10-06)
+
+Review of the plan below, with decisions from Marek. Where this
+section and the spec below disagree, this section wins. Opus: apply
+these before Day 1, then delete this section once the spec text
+itself is updated.
+
+## Decisions
+
+- **D1. Dual mode stays.** cells-mcp is archived as a public repo
+  and must keep working against the pre-fork upstream
+  `agar.io-clone` server, not only against archived cells-game 3.x.
+  After this release all backward compatibility is abandoned.
+- **D2. Protocol version is `1.0`, not `4.0`.** There is no
+  formalised protocol today, so this is the first one. cells-game
+  4.0.0 *serves* protocol 1.0; the two version numbers are
+  independent from here on. Rename every "4.0 protocol" / `protocol:
+  '4.0'` in the spec below to `'1.0'`, and `PROTOCOL_VERSION =
+  '1.0'`.
+- **D3. `core` language is out of scope** (likely Rust + PyO3, not
+  locked). No code-gen work now, but see "Runtime validation"
+  below so the protocol package has a language-neutral exit later.
+- **D4. Bots see what players see.** The 1x1 pixel screen cells-mcp
+  sends today is a bug: server culling uses the screen as the
+  visibility rectangle, so `observe` only reports cells already
+  overlapping the bot. In 1.0 the MCP subscriber passes a real
+  square viewport (new cells-mcp config `session.viewport`,
+  default a desktop-sized square, e.g. 1920x1920). The server
+  clamps `screen` to a configured maximum (`server.maxViewport`)
+  so no client can request the whole map as a "screen".
+
+## Required changes to the spec below
+
+1. **Legacy detection must be deterministic.** The pre-4.0 server
+   does nothing at all on a bare connection (no `?type=`), so the
+   probe as written never gets a reply from a legacy server and
+   always burns the full timeout, while a slow 4.0 server would be
+   misclassified as legacy. Replace the socket probe with an HTTP
+   check before connecting: 4.0 server exposes `GET /protocol`
+   returning `{ protocol: '1.0', server: 'cells-game', version:
+   '4.0.0' }`; a 404 (upstream agar.io-clone, cells-game 3.x)
+   selects legacy mode. Keep a timeout only as a safety net on the
+   1.0 `welcome`. Rewrite R1 accordingly.
+2. **No `file:../game-protocol` dependency.** Both Dockerfiles copy
+   only their own repo and both compose files (production and
+   starter-stack) build from GitHub URLs, so a sibling-path dep
+   breaks the first deploy after step 7. Use a git-tag dependency
+   (`github:cellagents/game-protocol#v1.0.0` with a `prepare`
+   build, or committed `dist/`), or publish to npm. Step 7 is not
+   done until `docker build` succeeds for cells-game and cells-mcp.
+3. **Runtime validation lives in game-protocol.** Ship zod schemas
+   for `subscribe`, `welcome`, `reject` and the tick payload; derive
+   the TS types with `z.infer`. The server validates `subscribe`
+   with them (that is what `INVALID_CAPABILITIES` etc. are decided
+   by). cells-mcp already depends on zod. JSON Schema export for
+   the Rust side is a later one-liner, not in 4.0.
+4. **Drop the `receive` capability.** No listed combination has it
+   false. Capabilities are `steer`, `presence`, `viewport`; every
+   subscriber receives.
+5. **Drop the "spectator slice" row** (`viewport` with `screen` but
+   no `follow` and no `presence`). It has nothing to centre on.
+   Valid sets: `{}` full spectator; `{viewport(follow)}` follow
+   viewer; `{steer, presence, viewport(screen)}` player and bot.
+6. **Gate `windowResized` on `viewport`, not `steer`.** It updates
+   the culling rectangle, which is a viewport concern.
+7. **`playerChat` payload is `{ message }`.** The server already
+   knows the subscriber's name; a client-supplied `sender` is the
+   impersonation hole the plan says it wants closed.
+8. **Define `self` as the camera anchor.** `tick.self` is the own
+   player for `presence`, the followed player for
+   `viewport.follow`, and `null` for full-map spectators. This
+   keeps the follow/managed pages and their grace logic working
+   (they key on `snapshot.self.id`) without a Day 3 rewrite. Note
+   it in the Tick payload section.
+9. **Specify `respawn` and the dead state.** After `died` the
+   subscriber keeps its capabilities and keeps receiving ticks with
+   `self: null`, culled around its last position, until it emits
+   `respawn`; the server then re-initialises the cell and re-emits
+   `welcome` (same shape as on subscribe). Today a dead player gets
+   nothing until respawn; the unified subscriber list makes the
+   continued ticks free.
+10. **Specify follow-target loss.** When `viewport.follow` names a
+    subscriber that is gone or has no cells, the server sends
+    full-map ticks with `self: null` (today's behaviour). The
+    client-side grace redirect on `/managed` stays as is.
+11. **Minimal handshake tests.** A small socket-level suite for
+    subscribe accept / reject / capability gating (steer without
+    `steer` is dropped, chat without `presence` is dropped). This
+    is the contract the release exists to produce and it moves
+    with the protocol package; the "no test build-out" exclusion
+    still applies to gameplay.
+12. **Harness is out of scope. Strike deliverable 7.** The harness
+    is parked until `core` can run algorithmic bots and high-speed
+    training; a web harness has no point before that. The harness
+    never touches the socket, so 4.0 does not break it beyond the
+    `/follow?...&managed=1` iframe URL that cells-game 3.0 already
+    stopped honouring, and that stays as is. R3 is correct;
+    deliverable 7 is removed.
+
+## Legacy mode: one exception to R4
+
+D4 applies in legacy mode too: the `LegacyGameClient` sends the
+same `session.viewport` square in `gotit.screenWidth/Height`
+instead of `1`. It is a two-line change, it is the bug Marek wants
+gone, and leaving it would make the archived cells-mcp useless
+against the upstream server it exists to support. Everything else
+in legacy mode stays untouched as R4 says.
+
+---
+
 # 4.0.0 — Protocol freeze, capability subscribers, dual-mode mcp
 
 Last release before `cells-game` and `cells-mcp` are archived and the

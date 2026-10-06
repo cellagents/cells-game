@@ -9,5 +9,5 @@
         "sourceMap": true,
         "declaration": false
     },
-    "include": ["src/server/**/*", "src/config.ts"]
+    "include": ["src/server/**/*", "src/shared/**/*", "src/config.ts"]
 }
