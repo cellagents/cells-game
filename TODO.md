@@ -8,11 +8,20 @@ mouse / touch. Legacy `canvas.ts`, `render.ts`, `global.ts` and
 `chat-client.ts` were removed as part of that port. Everything below
 is a smaller follow-up than fits a patch release.
 
-## 4.0.0 — Wire-protocol + subscriber-model break
+## 4.0.0 — Official game protocol + capability-based subscribers
 
-These two land together because they share the same breakage surface
-(wire shape + `cells-mcp` migration + harness update). Shipping them
-in one coherent release is strictly less disruptive than two.
+Framing: cells-game publishes a stable, documented, versioned
+real-time protocol as its public API. The web client, `cells-mcp`,
+the harness, and any future bot adapter are all consumers of that
+one protocol — none of them lives inside the server as a special
+case. MCP becomes a reference *adapter* that holds a subscriber
+connection on behalf of a tool-using client, not a protocol-forger
+pretending to be a player.
+
+The three items below ship together because they share the same
+breakage surface (wire shape, `cells-mcp` handshake, harness URLs).
+Shipping them in one coherent release is strictly less disruptive
+than splitting them.
 
 - **Rename the numeric socket events (`'0'`, `'1'`, `'2'`).** The
   heartbeat / fire / split channels still use string digits on the
@@ -38,35 +47,49 @@ in one coherent release is strictly less disruptive than two.
       follow-view   = receive + viewport (viewport = follow-id)
       managed       = receive, chrome-locked by config
 
+  Handshake sketch: `subscribe({ capabilities, name?, screen?,
+  follow? })` replaces the `type=` query + role-specific `gotit`
+  payloads. Capability checks live on the server: an adapter whose
+  subscriber was granted `steer: false` cannot smuggle a
+  `heartbeat`/`split` through its tool layer — the game server
+  rejects at the protocol boundary. Lifecycle events (`RIP`,
+  `kick`) stay but become capability-gated server-side.
+
+  Deprecate the `type=player|spectator` aliases on the wire; any
+  legacy client sending them is unsupported, not translated. The
+  web client and `cells-mcp` migrate in the same PR; nothing else
+  exists today.
+
   Benefits worth tracking the rewrite against:
-  1. `cells-mcp` becomes a capability-set (`receive + steer`
-     against a server-controlled presence, or `receive + steer +
-     presence` as a bot), not a protocol-forgery emulating the
-     player handshake.
+  1. `cells-mcp` becomes a capability-set (`receive + steer` with
+     a server-controlled presence, or `receive + steer + presence`
+     as a bot), not a protocol-forgery emulating the player
+     handshake.
   2. Server collapses `map.players.data` + `spectators[]` into a
      single subscriber list; `enumerateWhatPlayersSee` becomes
      `enumerateSubscribers` with capability-conditional filtering.
   3. Future variants (replay subscriber reading from a recording;
-     LLM-driven participant; analytics observer) become one more
-     capability combination, not a new protocol branch.
+     Python asyncio bot framework; analytics observer) become one
+     more capability combination, not a new protocol branch.
 
-  Handshake sketch: `subscribe({ capabilities, name?, screen?,
-  follow? })` replaces the `type=` query + role-specific `gotit`
-  payloads. Lifecycle events (`RIP`, `kick`) stay but become
-  capability-gated server-side.
+- **Shared protocol types package (`src/shared/protocol.ts`).**
+  Promoted from design/quality note to a 4.0 release goal because
+  it is the thing that makes "official game protocol" tangible
+  rather than aspirational. The handshake, event names, payload
+  shapes, and capability enum all live in one TypeScript module
+  consumed by:
 
-  Scope note: this is the trigger-driven path. Hold until a concrete
-  need appears (replay viewer, LLM agent subscriber, harness-side
-  cleanup pressure) OR until the wire rename above ships, since
-  both break `cells-mcp` and the harness in the same way.
+  - The game server (narrows its socket.on handlers).
+  - The thin client stack (replaces the `any` casts the connector
+    still carries).
+  - `cells-mcp` (imports instead of re-declaring).
+
+  Ship as a published package (`@cellagents/game-protocol`) or at
+  minimum pin a path dependency so `cells-mcp` upgrades
+  deliberately rather than drifting against the server.
 
 ## Design / quality (not blocking a major)
 
-- **Shared socket.io wire types.** The thin connector still accepts
-  `any`-ish socket payloads inside its handlers. Extracting a shared
-  `src/shared/protocol.ts` (consumed by server, client, and the
-  cells-mcp bridge) is the biggest typing win still on the table.
-  Naturally sized to land alongside the 4.0 wire rename.
-
-- **No tests.** `test/` has a single `util.js` stub. A minimal mocha
-  suite over `lib/util.ts` and `map/player.ts` would catch regressions.
+- **No tests.** `test/` has a single `util.js` stub. A minimal
+  mocha suite over `lib/util.ts` and `map/player.ts` would catch
+  regressions.
