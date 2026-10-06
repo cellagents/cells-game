@@ -8,6 +8,7 @@
             "fanOutHz": 40
         },
         "maxHeartbeatInterval": 5000,
+        "maxViewport": { "width": 2560, "height": 2560 },
         "logChat": false,
         "dbFileName": "db.sqlite3"
     },

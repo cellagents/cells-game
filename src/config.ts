@@ -49,6 +49,11 @@ export interface ServerConfig {
     /** Server kicks sockets whose last heartbeat is older than this
      *  many milliseconds. Set to 0 to disable the kick. */
     maxHeartbeatInterval: number;
+    /** Hard cap on the screen rectangle a subscriber may advertise.
+     *  The server clamps the per-subscriber screen to this box before
+     *  using it as the visibility culling rectangle, so no client can
+     *  claim an unbounded viewport and read the whole map. */
+    maxViewport: { width: number; height: number };
     logChat: boolean;
     dbFileName: string;
 }

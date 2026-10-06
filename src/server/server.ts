@@ -11,6 +11,14 @@ import { Map as GameMap, playerUtils } from './map/map';
 import { Player } from './map/player';
 import { getPosition } from './lib/entityUtils';
 import { adminEnabled, createAdminRouter } from './admin';
+import {
+    PROTOCOL_VERSION,
+    parseSubscribe,
+    type Capability,
+    type Welcome,
+    type Reject
+} from '../shared/protocol';
+import { readFileSync } from 'fs';
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +35,23 @@ interface SpectatorEntry {
 }
 const spectators: SpectatorEntry[] = [];
 
+/** Per-socket subscriber record. Keyed by socket.id. Living alongside
+ *  the legacy map.players.data / spectators[] until Day 2a merges
+ *  the lists. The capability set here is the one truth about what the
+ *  socket is allowed to send; the legacy entries exist only to feed
+ *  the existing tick + fan-out code paths unchanged. */
+interface Subscriber {
+    socketId: string;
+    capabilities: Set<Capability>;
+    name: string | null;
+    screen: { width: number; height: number } | null;
+    follow: string | null;
+    /** Non-null iff capabilities contains 'presence'. Same object as
+     *  the entry inside map.players.data for now. */
+    player: Player | null;
+}
+const subscribers: Record<string, Subscriber> = {};
+
 app.use(express.json());
 const INIT_MASS_LOG = util.mathLog(config.game.defaultPlayerMass, config.game.slowBase);
 
@@ -36,12 +61,39 @@ let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
+// Package version for GET /protocol. Read lazily at startup; not
+// recomputed per request. If the file is missing (unlikely in a built
+// container) we fall back to a sentinel; tests can override via the
+// CELLS_SERVER_VERSION env var.
+const SERVER_VERSION = (() => {
+    const env = process.env.CELLS_SERVER_VERSION;
+    if (env) return env;
+    try {
+        const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+        return typeof pkg.version === 'string' ? pkg.version : 'unknown';
+    } catch {
+        return 'unknown';
+    }
+})();
+
 const clientRoot = path.join(__dirname, '..', 'client');
 app.get('/', (_req, res) => res.sendFile(path.join(clientRoot, 'lobby.html')));
 app.get('/player', (_req, res) => res.sendFile(path.join(clientRoot, 'player.html')));
 app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectator.html')));
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
 app.get('/managed', (_req, res) => res.sendFile(path.join(clientRoot, 'managed.html')));
+
+// GET /protocol — HTTP probe used by cells-mcp (and anyone else) to
+// decide which wire the server speaks before opening a socket. A
+// pre-1.0 server does not expose this route and 404s, which is what
+// legacy-mode detection relies on.
+app.get('/protocol', (_req, res) => {
+    res.json({
+        protocol: PROTOCOL_VERSION,
+        server: 'cells-game',
+        version: SERVER_VERSION
+    });
+});
 
 // Per-view UI config for the client's floating-button chrome. The
 // client fetches this at page load; see thin/chrome.ts for the
@@ -144,19 +196,26 @@ if (adminEnabled()) {
 
 app.use(express.static(clientRoot));
 
+// Connection handling. The 1.0 server does not read any query string;
+// subscribers connect bare and then declare themselves via a
+// 'subscribe' event. The old `?type=player|spectator` branches are
+// gone. A client that fails to send `subscribe` within the handshake
+// timeout is dropped silently.
 io.on('connection', (socket: Socket) => {
-    const type = socket.handshake.query.type;
-    console.log('User has connected: ', type);
-    switch (type) {
-        case 'player':
-            addPlayer(socket);
-            break;
-        case 'spectator':
-            addSpectator(socket);
-            break;
-        default:
-            console.log('Unknown user type, not doing anything.');
-    }
+    const handshakeTimeout = setTimeout(() => {
+        if (!subscribers[socket.id]) {
+            socket.emit('reject', {
+                code: 'INVALID_PAYLOAD',
+                message: 'no subscribe within handshake window'
+            } satisfies Reject);
+            socket.disconnect();
+        }
+    }, 5000);
+
+    socket.once('subscribe', (raw: unknown) => {
+        clearTimeout(handshakeTimeout);
+        attachSubscriber(socket, raw);
+    });
 });
 
 function generateSpawnpoint() {
@@ -164,132 +223,196 @@ function generateSpawnpoint() {
     return getPosition(config.game.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
 }
 
-interface ClientPlayerData {
-    name: string;
-    screenWidth: number;
-    screenHeight: number;
+/** Clamp a client-advertised screen rectangle to the server's
+ *  configured maximum. Mutates nothing; returns a new object. */
+function clampScreen(screen: { width: number; height: number }): { width: number; height: number } {
+    return {
+        width: Math.min(screen.width, config.server.maxViewport.width),
+        height: Math.min(screen.height, config.server.maxViewport.height)
+    };
 }
 
-const addPlayer = (socket: Socket) => {
-    const currentPlayer = new playerUtils.Player(socket.id);
+/** Decide the capability-set-driven role of a subscriber. The three
+ *  valid combinations are exhaustive thanks to the SubscribeSchema
+ *  semantic validator. */
+function roleOf(caps: Set<Capability>): 'spectator' | 'follow' | 'player' {
+    if (caps.has('presence')) return 'player';
+    if (caps.has('viewport')) return 'follow';
+    return 'spectator';
+}
 
-    socket.on('gotit', (clientPlayerData: ClientPlayerData) => {
-        console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
-        currentPlayer.init(generateSpawnpoint(), config.game.defaultPlayerMass);
+function attachSubscriber(socket: Socket, raw: unknown): void {
+    const parsed = parseSubscribe(raw);
+    if (!parsed.ok) {
+        socket.emit('reject', { code: parsed.code, message: parsed.message } satisfies Reject);
+        socket.disconnect();
+        return;
+    }
 
+    const sub = parsed.value;
+    const caps = new Set<Capability>(sub.capabilities);
+    const role = roleOf(caps);
+
+    // Register BEFORE emitting welcome so the per-event capability
+    // gates below find the record on their first lookup.
+    sockets[socket.id] = socket;
+    const record: Subscriber = {
+        socketId: socket.id,
+        capabilities: caps,
+        name: sub.name ?? null,
+        screen: sub.screen ? clampScreen(sub.screen) : null,
+        follow: sub.follow ?? null,
+        player: null
+    };
+    subscribers[socket.id] = record;
+
+    if (role === 'player') {
+        const player = new playerUtils.Player(socket.id);
         if (map.players.findIndexByID(socket.id) > -1) {
-            console.log('[INFO] Player ID is already connected, kicking.');
+            socket.emit('reject', {
+                code: 'INVALID_PAYLOAD',
+                message: 'duplicate player id'
+            } satisfies Reject);
+            cleanupSocket(socket, /* notifyOthers */ false);
             socket.disconnect();
-        } else if (!util.validNick(clientPlayerData.name)) {
-            socket.emit('kick', 'Invalid username.');
-            socket.disconnect();
-        } else {
-            console.log('[INFO] Player ' + clientPlayerData.name + ' connected!');
-            sockets[socket.id] = socket;
-
-            const sanitizedName = clientPlayerData.name.replace(/(<([^>]+)>)/ig, '');
-            clientPlayerData.name = sanitizedName;
-
-            currentPlayer.clientProvidedData(clientPlayerData);
-            map.players.pushNew(currentPlayer);
-            io.emit('playerJoin', { name: currentPlayer.name });
-            console.log('Total players: ' + map.players.data.length);
+            return;
         }
+        player.init(generateSpawnpoint(), config.game.defaultPlayerMass);
+        const sanitizedName = (sub.name as string).replace(/(<([^>]+)>)/ig, '');
+        player.clientProvidedData({
+            name: sanitizedName,
+            screenWidth: record.screen!.width,
+            screenHeight: record.screen!.height
+        });
+        map.players.pushNew(player);
+        record.player = player;
+        io.emit('playerJoin', { name: player.name });
+        console.log('[INFO] Player ' + player.name + ' connected (presence subscriber).');
+    } else if (role === 'follow') {
+        spectators.push({ socketId: socket.id, mode: 'viewport', follow: sub.follow ?? null });
+        io.emit('playerJoin', { name: '' });
+    } else {
+        spectators.push({ socketId: socket.id, mode: 'full', follow: null });
+        io.emit('playerJoin', { name: '' });
+    }
+
+    socket.emit('welcome', welcomeFor(record));
+
+    wireEvents(socket, record);
+}
+
+/** Compose the welcome payload for a subscriber. The validator
+ *  guarantees that a presence subscriber had a name on subscribe, so
+ *  record.name is non-null whenever record.player is. */
+function welcomeFor(record: Subscriber): Welcome {
+    return {
+        protocol: PROTOCOL_VERSION,
+        subscriberId: record.socketId,
+        world: { width: config.game.width, height: config.game.height },
+        self: record.player && record.name !== null
+            ? { id: record.player.id, name: record.name, hue: record.player.hue }
+            : null
+    };
+}
+
+/** Capability-gated event wiring. Every handler checks the current
+ *  subscriber record so revocation (if we ever add it) just works. */
+function wireEvents(socket: Socket, record: Subscriber): void {
+    socket.on('disconnect', () => {
+        cleanupSocket(socket, /* notifyOthers */ true);
     });
 
     socket.on('pingcheck', () => {
         socket.emit('pongcheck');
     });
 
-    socket.on('windowResized', (data: { screenWidth: number; screenHeight: number }) => {
-        currentPlayer.screenWidth = data.screenWidth;
-        currentPlayer.screenHeight = data.screenHeight;
+    // windowResized is a viewport concern; a follow viewer with no
+    // screen advertised ignores it (its viewport comes from the
+    // followed player's screen in the legacy fan-out path).
+    socket.on('windowResized', (data: { screenWidth?: number; screenHeight?: number; width?: number; height?: number }) => {
+        if (!record.capabilities.has('viewport')) return;
+        const w = typeof data.width === 'number' ? data.width : data.screenWidth;
+        const h = typeof data.height === 'number' ? data.height : data.screenHeight;
+        if (typeof w !== 'number' || typeof h !== 'number') return;
+        const clamped = clampScreen({ width: w, height: h });
+        record.screen = clamped;
+        if (record.player) {
+            record.player.screenWidth = clamped.width;
+            record.player.screenHeight = clamped.height;
+        }
     });
 
     socket.on('respawn', () => {
-        map.players.removePlayerByID(currentPlayer.id);
-        socket.emit('welcome', currentPlayer, {
-            width: config.game.width,
-            height: config.game.height
-        });
-        console.log('[INFO] User ' + currentPlayer.name + ' has respawned');
+        if (!record.capabilities.has('steer') || !record.player) return;
+        map.players.removePlayerByID(record.player.id);
+        record.player.init(generateSpawnpoint(), config.game.defaultPlayerMass);
+        map.players.pushNew(record.player);
+        socket.emit('welcome', welcomeFor(record));
+        console.log('[INFO] User ' + record.name + ' has respawned');
     });
 
-    socket.on('disconnect', () => {
-        map.players.removePlayerByID(currentPlayer.id);
-        console.log('[INFO] User ' + currentPlayer.name + ' has disconnected');
-        socket.broadcast.emit('playerDisconnect', { name: currentPlayer.name });
-    });
-
-    socket.on('playerChat', (data: { sender: string; message: string }) => {
-        const _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
-        const _message = data.message.replace(/(<([^>]+)>)/ig, '');
+    socket.on('playerChat', (data: { message?: unknown }) => {
+        if (!record.capabilities.has('presence') || !record.player || record.name === null) return;
+        if (typeof data?.message !== 'string') return;
+        const stripped = data.message.replace(/(<([^>]+)>)/ig, '').substring(0, 35);
+        if (!stripped) return;
 
         if (config.server.logChat) {
-            console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
+            const d = new Date();
+            console.log('[CHAT] [' + d.getHours() + ':' + d.getMinutes() + '] ' + record.name + ': ' + stripped);
         }
 
+        // Sender is server-authoritative. The client cannot forge it.
         socket.broadcast.emit('serverSendPlayerChat', {
-            sender: currentPlayer.name,
-            message: _message.substring(0, 35)
+            sender: record.name,
+            message: stripped
         });
 
-        chatRepository.logChatMessage(_sender, _message, currentPlayer.ipAddress)
-            .catch((err) => console.error("Error when attempting to log chat message", err));
+        chatRepository.logChatMessage(record.name, stripped, record.player.ipAddress)
+            .catch((err) => console.error('Error when attempting to log chat message', err));
     });
 
-    // Heartbeat function, update everytime.
+    // Heartbeat / fire / split — legacy event names kept until Day 2b.
     socket.on('0', (target: { x: number; y: number }) => {
-        currentPlayer.lastHeartbeat = new Date().getTime();
-        if (target.x !== currentPlayer.x || target.y !== currentPlayer.y) {
-            currentPlayer.target = target;
+        if (!record.capabilities.has('steer') || !record.player) return;
+        record.player.lastHeartbeat = new Date().getTime();
+        if (target.x !== record.player.x || target.y !== record.player.y) {
+            record.player.target = target;
         }
     });
 
     socket.on('1', () => {
-        // Fire food.
+        if (!record.capabilities.has('steer') || !record.player) return;
         const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
-        for (let i = 0; i < currentPlayer.cells.length; i++) {
-            if (currentPlayer.cells[i].mass >= minCellMass) {
-                currentPlayer.changeCellMass(i, -config.game.fireFood);
-                map.massFood.addNew(currentPlayer, i, config.game.fireFood);
+        for (let i = 0; i < record.player.cells.length; i++) {
+            if (record.player.cells[i].mass >= minCellMass) {
+                record.player.changeCellMass(i, -config.game.fireFood);
+                map.massFood.addNew(record.player, i, config.game.fireFood);
             }
         }
     });
 
     socket.on('2', () => {
-        currentPlayer.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
+        if (!record.capabilities.has('steer') || !record.player) return;
+        record.player.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
     });
-};
-
-function parseSpectatorQuery(socket: Socket): { mode: 'full' | 'viewport'; follow: string | null } {
-    const dataParam = socket.handshake.query.data;
-    const followParam = socket.handshake.query.follow;
-    const mode = (typeof dataParam === 'string' && dataParam === 'viewport') ? 'viewport' : 'full';
-    const follow = (typeof followParam === 'string' && followParam.length > 0) ? followParam : null;
-    return { mode, follow };
 }
 
-const addSpectator = (socket: Socket) => {
-    const { mode, follow } = parseSpectatorQuery(socket);
-
-    socket.on('gotit', () => {
-        sockets[socket.id] = socket;
-        spectators.push({ socketId: socket.id, mode, follow });
-        io.emit('playerJoin', { name: '' });
-    });
-
-    socket.on('disconnect', () => {
-        const idx = spectators.findIndex((s) => s.socketId === socket.id);
-        if (idx > -1) spectators.splice(idx, 1);
-        delete sockets[socket.id];
-    });
-
-    socket.emit("welcome", {}, {
-        width: config.game.width,
-        height: config.game.height
-    });
-};
+function cleanupSocket(socket: Socket, notifyOthers: boolean): void {
+    const record = subscribers[socket.id];
+    if (!record) return;
+    delete subscribers[socket.id];
+    delete sockets[socket.id];
+    if (record.player) {
+        map.players.removePlayerByID(record.player.id);
+        if (notifyOthers && record.name !== null) {
+            socket.broadcast.emit('playerDisconnect', { name: record.name });
+            console.log('[INFO] User ' + record.name + ' has disconnected');
+        }
+    }
+    const specIdx = spectators.findIndex((s) => s.socketId === socket.id);
+    if (specIdx > -1) spectators.splice(specIdx, 1);
+}
 
 const tickPlayer = (currentPlayer: Player) => {
     if (config.server.maxHeartbeatInterval > 0 &&
