@@ -99,6 +99,15 @@ export function connect(opts: ConnectOptions): GameHandle {
     const listeners = new Map<EventName, Set<Listener>>();
     let pingStartedAt = 0;
 
+    // Latest-value cache for events that fire once (or rarely) during a
+    // session. Late subscribers (e.g. the chrome fetching /ui-config
+    // during socket.io's handshake) would otherwise miss the first
+    // 'connect' and leave their status overlay stuck on. On subscribe
+    // we replay the most recent known value for the covered events.
+    const lastEvent = new Map<EventName, unknown>();
+    const REPLAYABLE: readonly EventName[] = ['connect', 'disconnect', 'welcome', 'world'];
+    const isReplayable = (e: EventName): boolean => REPLAYABLE.indexOf(e) !== -1;
+
     const handle: GameHandle = {
         socket,
         snapshot: null,
@@ -108,6 +117,13 @@ export function connect(opts: ConnectOptions): GameHandle {
         on(event, cb) {
             if (!listeners.has(event)) listeners.set(event, new Set());
             listeners.get(event)!.add(cb);
+            if (isReplayable(event) && lastEvent.has(event)) {
+                // Fire the latest cached payload asynchronously so the
+                // caller finishes wiring (e.g. storing the returned
+                // unsubscribe fn) before the callback runs.
+                const payload = lastEvent.get(event);
+                queueMicrotask(() => cb(payload));
+            }
             return () => listeners.get(event)!.delete(cb);
         },
         disconnect() {
@@ -135,6 +151,7 @@ export function connect(opts: ConnectOptions): GameHandle {
     };
 
     const emit = (event: EventName, payload: unknown) => {
+        if (isReplayable(event)) lastEvent.set(event, payload);
         const set = listeners.get(event);
         if (set) for (const cb of set) cb(payload);
     };
@@ -157,8 +174,15 @@ export function connect(opts: ConnectOptions): GameHandle {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    socket.on('connect', () => emit('connect', null));
+    // connect/disconnect are opposites: a late subscriber must see
+    // the current state, not a stale one. Clear the other side when
+    // either fires so replay reflects "where we are right now".
+    socket.on('connect', () => {
+        lastEvent.delete('disconnect');
+        emit('connect', null);
+    });
     socket.on('disconnect', (reason: string) => {
+        lastEvent.delete('connect');
         emit('disconnect', { reason, deliberate: reason === 'io server disconnect' });
     });
 
