@@ -2,25 +2,13 @@
 // leaderboard. Chat is shown by default; disable with ?chat=off (also
 // accepts 0/false/no).
 
-import { Renderer, RendererPalette } from './thin/renderer';
+import { Renderer } from './thin/renderer';
 import { connect, resolveGameServer, DisconnectPayload } from './thin/connect';
 import { fullMapCamera } from './thin/camera';
 import { createChat } from './chat/chat';
 import { StatusOverlay } from './thin/overlay';
-import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, canvasColorsFor } from './theme';
+import { applyTheme, currentTheme, attachThemeToggle, onThemeChange, rendererPaletteFor } from './theme';
 import { attachLeaderboardToggle } from './leaderboard-toggle';
-
-function paletteFor(theme: 'light' | 'dark'): RendererPalette {
-    const c = canvasColorsFor(theme);
-    return {
-        background: c.background,
-        boundary: c.border,
-        food: c.food,
-        mass: c.mass,
-        virus: c.virus,
-        virusStroke: c.virusStroke
-    };
-}
 
 applyTheme(currentTheme());
 const themeBtn = document.getElementById('themeToggle');
@@ -63,8 +51,8 @@ function isManaged(): boolean {
 }
 
 const canvas = document.getElementById('cvs') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, paletteFor(currentTheme()));
-onThemeChange((t) => renderer.setPalette(paletteFor(t)));
+const renderer = new Renderer(canvas, rendererPaletteFor(currentTheme()));
+onThemeChange((t) => renderer.setPalette(rendererPaletteFor(t)));
 const leaderboardEl = document.getElementById('leaderboard') as HTMLElement;
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'full' });
