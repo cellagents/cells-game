@@ -13,13 +13,15 @@ import { followCamera } from './thin/camera';
 import { attachInput } from './thin/input';
 import { attachMinimap } from './thin/minimap';
 import { createViewport, ViewportHandle } from './thin/viewport';
+import { USER_AGENT } from './thin/userAgent';
 import { applyTheme, cycleTheme } from './theme';
 
 // Nickname validation. Lobby already enforces this, so a direct hit on
 // /player without a name is treated as "go back to the lobby".
+// The protocol-wire regex is Unicode-aware; keep this one aligned.
 const params = new URLSearchParams(window.location.search);
 const rawName = params.get('name');
-if (!rawName || !/^\w+$/.test(rawName)) {
+if (!rawName || !/^[\p{L}\p{N}_]+$/u.test(rawName)) {
     window.location.href = '/';
     throw new Error('missing or invalid ?name= param; redirecting to lobby');
 }
@@ -33,7 +35,8 @@ const settings = { showBorder: false, showMass: false };
 
 const game = connect({
     gameServerUrl: resolveGameServer(),
-    capabilities: ['steer', 'presence', 'viewport'],
+    userAgent: USER_AGENT,
+    capabilities: ['presence', 'steer', 'act', 'chat'],
     name: playerName,
     screen: { width: window.innerWidth, height: window.innerHeight }
 });
@@ -120,9 +123,12 @@ game.on('pong', (ms) => vp?.chat?.addSystem(`Ping: ${ms as number}ms`));
 
 // Mobile touch controls. Visible on coarse pointers via CSS; harmless
 // on desktop because the keyboard shortcuts cover the same actions.
+// The sender helpers themselves gate on the current actions set so
+// buttons work only when the server lists the action in welcome /
+// actionsChanged.
 document.getElementById('feed')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    game.sendFireFood();
+    game.sendEject();
 });
 document.getElementById('split')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -167,7 +173,10 @@ createViewport({
                 else vp?.chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
                 return;
             }
-            game.sendChat(text);
+            // Server stamps `from` and echoes a `message` back; the
+            // local echo keeps the chat log snappy if the socket
+            // round-trip is slow.
+            game.sendSay(text);
             vp?.chat?.addChat(playerName, text);
         }
     },

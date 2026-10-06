@@ -6,9 +6,11 @@
 import type { Socket } from 'socket.io-client';
 
 export interface ChatEvents {
-    /** Player chat (serverSendPlayerChat). */
+    /** Protocol-1.0 `message` events (chat scope). Also catches
+     *  admin broadcasts whose `from` is null. */
     chat?: boolean;
-    /** Server system messages (serverMSG). */
+    /** Reserved for future use. Protocol 1.0 removed the dedicated
+     *  server-message channel; keep the flag so pages don't break. */
     system?: boolean;
     /** Player joined (playerJoin). Empty-name events are filtered. */
     join?: boolean;
@@ -124,14 +126,20 @@ export function createChat(cfg: ChatConfig): ChatHandle {
     }
 
     if (cfg.events.chat) {
-        sub('serverSendPlayerChat', (d: { sender: string; message: string }) => {
-            addChat(d.sender, d.message);
+        // Protocol 1.0 `message` event. `from.name` null means
+        // "server / admin"; render as an admin line.
+        sub('message', (d: { from: { id: string; name: string | null } | null; text: string }) => {
+            if (!d || typeof d.text !== 'string') return;
+            if (!d.from) {
+                addChat('ADMIN', d.text);
+                return;
+            }
+            addChat(d.from.name ?? '', d.text);
         });
     }
-    if (cfg.events.system) {
-        // serverMSG is a deprecated channel; still subscribed for safety.
-        sub('serverMSG', (data: string) => addSystem(escapeHtml(data)));
-    }
+    // cfg.events.system reserved; protocol 1.0 ships no dedicated
+    // server-message channel. Admin broadcasts arrive as `message`
+    // with from:null and are handled above.
     if (cfg.events.join) {
         sub('playerJoin', (d: { name: string }) => {
             if (!d || !d.name) return;
@@ -145,9 +153,13 @@ export function createChat(cfg: ChatConfig): ChatHandle {
         });
     }
     if (cfg.events.death) {
-        sub('playerDied', (d: { name?: string; playerEatenName?: string }) => {
-            const who = d.playerEatenName ?? d.name ?? '';
-            addSystem(`<b>${escapeHtml(nameOrUnnamed(who))}</b> was eaten`);
+        sub('playerDied', (d: { playerEatenName?: string; killerName?: string | null }) => {
+            const who = d.playerEatenName ?? '';
+            if (d.killerName) {
+                addSystem(`<b>${escapeHtml(nameOrUnnamed(who))}</b> was eaten by <b>${escapeHtml(nameOrUnnamed(d.killerName))}</b>`);
+            } else {
+                addSystem(`<b>${escapeHtml(nameOrUnnamed(who))}</b> was eaten`);
+            }
         });
     }
 

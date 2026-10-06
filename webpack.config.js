@@ -1,4 +1,6 @@
 const path = require('node:path');
+const webpack = require('webpack');
+const pkg = require('./package.json');
 
 module.exports = (_env, argv) => {
     const isProduction = (argv && argv.mode) === 'production';
@@ -20,6 +22,11 @@ module.exports = (_env, argv) => {
             filename: '[name].js'
         },
         devtool: false,
+        plugins: [
+            new webpack.DefinePlugin({
+                __CELLS_VERSION__: JSON.stringify(pkg.version)
+            })
+        ],
         module: {
             rules: [{
                 test: /\.ts$/,

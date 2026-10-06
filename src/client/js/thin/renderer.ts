@@ -5,6 +5,7 @@
 // to include) are passed per draw call so a single Renderer instance
 // can serve both a main viewport and a minimap.
 
+import type { Entity, Tick } from '@cellagents/game-protocol';
 import type { Camera, WorldSize } from './camera';
 
 const FOOD_RADIUS = 10;
@@ -43,12 +44,22 @@ const DEFAULT_PALETTE: RendererPalette = {
     labelOutline: '#000000'
 };
 
-export interface Snapshot {
-    self?: { id: string; x: number; y: number; massTotal: number; hue: number; cells: Array<{ x: number; y: number; radius: number; mass?: number }> } | null;
-    players?: Array<{ id: string; name?: string | null; hue?: number; cells: Array<{ x: number; y: number; radius: number; mass?: number }> }>;
-    food?: Array<{ x: number; y: number; hue?: number; radius?: number }>;
-    mass?: Array<{ x: number; y: number; radius?: number; hue?: number }>;
-    viruses?: Array<{ x: number; y: number; radius?: number }>;
+/** The renderer draws straight from a protocol Tick. */
+export type Snapshot = Tick;
+
+/** Hue lookup: player id → hue. Derived from Tick.players for cell
+ *  colouring. */
+function hueMap(tick: Tick): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const p of tick.players) m.set(p.id, p.hue);
+    return m;
+}
+
+/** Name lookup: player id → name. */
+function nameMap(tick: Tick): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const p of tick.players) if (p.name) m.set(p.id, p.name);
+    return m;
 }
 
 export interface DrawOptions {
@@ -160,13 +171,33 @@ export class Renderer {
             ctx.strokeRect(tl.x, tl.y, this.world.width * camera.scale, this.world.height * camera.scale);
         }
 
-        // Food
+        // Entities are one flat list in protocol 1.0; split by kind
+        // for the three visual layers (food/mass under, cells and
+        // viruses over). Unknown kinds fall through to a plain-circle
+        // rendering so a 1.0 client stays visually valid against a
+        // future 1.x server that adds, say, `portal`.
         const defaultFoodR = FOOD_RADIUS * camera.scale * 0.5;
-        for (const f of snapshot.food || []) {
+        const foods: Entity[] = [];
+        const ejected: Entity[] = [];
+        const viruses: Entity[] = [];
+        const cells: Entity[] = [];
+        const unknowns: Entity[] = [];
+        for (const e of snapshot.entities || []) {
+            switch (e.kind) {
+                case 'food': foods.push(e); break;
+                case 'ejected': ejected.push(e); break;
+                case 'virus': viruses.push(e); break;
+                case 'cell': cells.push(e); break;
+                default: unknowns.push(e); break;
+            }
+        }
+
+        for (const f of foods) {
             const p = toScreen(f.x, f.y);
             const r = f.radius ? f.radius * camera.scale : defaultFoodR;
-            if (opts.foodHues && typeof f.hue === 'number') {
-                ctx.fillStyle = `hsl(${f.hue},100%,50%)`;
+            const hue = (f as { hue?: number }).hue;
+            if (opts.foodHues && typeof hue === 'number') {
+                ctx.fillStyle = `hsl(${hue},100%,50%)`;
             } else {
                 ctx.fillStyle = this.palette.food;
             }
@@ -175,12 +206,12 @@ export class Renderer {
             ctx.fill();
         }
 
-        // Mass food (ejected mass)
-        for (const m of snapshot.mass || []) {
+        for (const m of ejected) {
             const p = toScreen(m.x, m.y);
             const r = (m.radius || 10) * camera.scale;
-            if (opts.foodHues && typeof m.hue === 'number') {
-                ctx.fillStyle = `hsl(${m.hue},100%,50%)`;
+            const hue = (m as { hue?: number }).hue;
+            if (opts.foodHues && typeof hue === 'number') {
+                ctx.fillStyle = `hsl(${hue},100%,50%)`;
             } else {
                 ctx.fillStyle = this.palette.mass;
             }
@@ -189,10 +220,9 @@ export class Renderer {
             ctx.fill();
         }
 
-        // Viruses
         ctx.fillStyle = this.palette.virus;
         ctx.strokeStyle = this.palette.virusStroke;
-        for (const v of snapshot.viruses || []) {
+        for (const v of viruses) {
             const p = toScreen(v.x, v.y);
             const r = (v.radius || 60) * camera.scale;
             ctx.beginPath();
@@ -202,26 +232,47 @@ export class Renderer {
             ctx.stroke();
         }
 
-        // Players + highlight self (if provided). Sort by cell mass so
-        // smaller cells render under bigger ones, same as legacy client.
+        // Players + cells. Group by owner for labelling + colouring.
+        const hues = hueMap(snapshot);
+        const names = nameMap(snapshot);
+        const selfId = snapshot.self?.id ?? null;
+        // Which players are invulnerable right now? Rendered as a
+        // subtle extra ring so humans and bots alike can see it.
+        const invulnerable = new Set<string>();
+        for (const p of snapshot.players) {
+            if (!p.effects) continue;
+            for (const eff of p.effects) {
+                if (eff.type === 'invulnerable' && (eff.until === undefined || eff.until > snapshot.time)) {
+                    invulnerable.add(p.id);
+                    break;
+                }
+            }
+        }
+
         const flatCells: Array<{
             x: number; y: number; r: number; mass: number;
             fill: string; stroke: string; name: string; isSelf: boolean;
+            ownerId: string; noMerge: boolean; invuln: boolean;
         }> = [];
-        for (const player of snapshot.players || []) {
-            const hue = player.hue ?? 0;
-            const isSelf = !!(snapshot.self && player.id === snapshot.self.id);
-            for (const cell of player.cells || []) {
-                flatCells.push({
-                    x: cell.x, y: cell.y,
-                    r: cell.radius * camera.scale,
-                    mass: cell.mass ?? 0,
-                    fill: `hsl(${hue},80%,55%)`,
-                    stroke: isSelf ? this.palette.labelText : `hsl(${hue},80%,35%)`,
-                    name: player.name || '',
-                    isSelf
-                });
-            }
+        for (const c of cells) {
+            const owner = (c as { owner?: string }).owner;
+            if (!owner) continue;
+            const hue = hues.get(owner) ?? 0;
+            const isSelf = owner === selfId;
+            const noMerge = !!c.effects?.some((e) =>
+                e.type === 'noMerge' && (e.until === undefined || e.until > snapshot.time));
+            flatCells.push({
+                x: c.x, y: c.y,
+                r: c.radius * camera.scale,
+                mass: c.mass,
+                fill: `hsl(${hue},80%,55%)`,
+                stroke: isSelf ? this.palette.labelText : `hsl(${hue},80%,35%)`,
+                name: names.get(owner) || '',
+                isSelf,
+                ownerId: owner,
+                noMerge,
+                invuln: invulnerable.has(owner)
+            });
         }
         flatCells.sort((a, b) => a.mass - b.mass);
 
@@ -235,6 +286,33 @@ export class Renderer {
             ctx.arc(p.x, p.y, cell.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
+
+            // Effect decor. `invulnerable` on the owner → extra
+            // dashed ring just outside the cell; `noMerge` on this
+            // cell → faint second ring, matching the "cells recently
+            // split can't rejoin yet" state so humans and bots see
+            // it the same.
+            if (cell.invuln) {
+                ctx.save();
+                ctx.setLineDash([Math.max(2, 4 * camera.scale), Math.max(2, 4 * camera.scale)]);
+                ctx.lineWidth = Math.max(1, 2 * camera.scale);
+                ctx.strokeStyle = this.palette.labelText;
+                ctx.globalAlpha = 0.75;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, cell.r + Math.max(3, 5 * camera.scale), 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+            if (cell.noMerge) {
+                ctx.save();
+                ctx.globalAlpha = 0.4;
+                ctx.lineWidth = Math.max(1, 1.5 * camera.scale);
+                ctx.strokeStyle = cell.stroke;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, cell.r + Math.max(2, 3 * camera.scale), 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
 
             if (labels && cell.r > 14 && cell.name) {
                 const fontSize = Math.max(12, cell.r / 3);
@@ -257,6 +335,25 @@ export class Renderer {
                     ctx.fillText(label, p.x, p.y + fontSize);
                 }
             }
+        }
+
+        // Unknown-kind entities: honest grey circle, radius from
+        // the wire. Keeps a future server's new kinds visible
+        // instead of invisible (forward-compat rule 1).
+        if (unknowns.length) {
+            ctx.save();
+            ctx.fillStyle = '#999';
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = Math.max(1, 2 * camera.scale);
+            for (const u of unknowns) {
+                const p = toScreen(u.x, u.y);
+                const r = (u.radius || 10) * camera.scale;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            ctx.restore();
         }
 
         ctx.restore();

@@ -14,7 +14,12 @@ export interface Identifiable {
 }
 
 export function validNick(nickname: string): boolean {
-    const regex = /^\w*$/;
+    // Mirrors the protocol's NameSchema (@cellagents/game-protocol):
+    // any Unicode letter or digit plus underscore. The protocol
+    // schema requires 1..25 chars and runs on subscribe; this
+    // defensive copy is used by legacy admin paths and must stay in
+    // step so a name that passes one never fails the other.
+    const regex = /^[\p{L}\p{N}_]+$/u;
     return regex.exec(nickname) !== null;
 }
 

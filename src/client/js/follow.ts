@@ -11,6 +11,7 @@ import { connect, resolveGameServer } from './thin/connect';
 import { followCamera } from './thin/camera';
 import { createViewport } from './thin/viewport';
 import { attachMinimap } from './thin/minimap';
+import { USER_AGENT } from './thin/userAgent';
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
@@ -26,11 +27,12 @@ const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const info = document.getElementById('follow-info');
 
-// Follow viewer: viewport capability + follow target. Server anchors
-// the viewport on the followed player's current viewport rectangle.
+// Follow viewer: {follow} capability + initial target. Server
+// anchors the viewport on the followed player's current rectangle.
 const game = connect({
     gameServerUrl: resolveGameServer(),
-    capabilities: ['viewport'],
+    userAgent: USER_AGENT,
+    capabilities: ['follow'],
     follow: followId
 });
 
@@ -79,12 +81,11 @@ function chatEnabled(): boolean {
 function loop(): void {
     if (!document.hidden && game.snapshot) {
         renderer.resize();
-        const target = game.snapshot.self && game.snapshot.self.cells && game.snapshot.self.cells.length > 0
-            ? game.snapshot.self
-            : null;
+        const self = game.snapshot.self;
+        const target = self ? { x: self.x, y: self.y } : null;
         renderer.draw(game.snapshot, followCamera(target, canvas, game.world, 1.5));
         if (info) {
-            const mass = game.snapshot.self?.massTotal ?? 0;
+            const mass = self?.massTotal ?? 0;
             info.textContent = `following ${followId!.slice(0, 8)} · mass ${Math.round(mass)}`;
         }
     }

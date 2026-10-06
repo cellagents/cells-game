@@ -49,10 +49,17 @@ describe('util.js', () => {
       expect(n5).to.be.true;
     });
 
-    it('should disallow unicode-dependent alphabets', () => {
+    it('should accept Unicode letters and digits (protocol 1.0 widening)', () => {
+      // 1.0 moved validNick from /^\w+$/ to /^[\p{L}\p{N}_]+$/u to
+      // match the protocol's NameSchema; non-ASCII letters are now
+      // valid.
       var n1 = util.validNick('Йèæü');
+      var n2 = util.validNick('Jiří');
+      var n3 = util.validNick('学生01');
 
-      expect(n1).to.be.false;
+      expect(n1).to.be.true;
+      expect(n2).to.be.true;
+      expect(n3).to.be.true;
     });
 
     it('should disallow spaces in nicknames', () => {

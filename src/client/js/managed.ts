@@ -1,6 +1,6 @@
 // Managed viewport. Served at /managed for embedding inside the
 // harness iframe. Camera semantics:
-//   /managed              — spectator-equivalent, full-map camera
+//   /managed              — omniscient full-map camera
 //   /managed?player=<id>  — follow-equivalent, follow-camera at 1.5x
 //
 // Chrome is deliberately minimal: by default (config.client.managed.ui)
@@ -15,6 +15,7 @@ import { connect, resolveGameServer } from './thin/connect';
 import { fullMapCamera, followCamera } from './thin/camera';
 import { createViewport } from './thin/viewport';
 import { attachMinimap } from './thin/minimap';
+import { USER_AGENT } from './thin/userAgent';
 
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
@@ -22,16 +23,23 @@ const followId = params.get('player');
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 
-// Follow-camera uses the viewport-slice stream so the server doesn't
-// ship entities the followed player can't see. Full-map uses the
-// full stream so the whole arena renders.
+// A managed iframe is a view-only surface. {omniscient} for the
+// no-target case; {follow} + target for the player-cam case.
 const game = followId
-    ? connect({ gameServerUrl: resolveGameServer(), capabilities: ['viewport'], follow: followId })
-    : connect({ gameServerUrl: resolveGameServer(), capabilities: [] });
+    ? connect({
+        gameServerUrl: resolveGameServer(),
+        userAgent: USER_AGENT,
+        capabilities: ['follow'],
+        follow: followId
+    })
+    : connect({
+        gameServerUrl: resolveGameServer(),
+        userAgent: USER_AGENT,
+        capabilities: ['omniscient']
+    });
 
 // Grace redirect: if the followed id never produces a snapshot, fall
-// back to full-map by stripping ?player= and reloading. Only applies
-// when a follow target was requested in the first place.
+// back to full-map by stripping ?player= and reloading.
 if (followId) {
     const GRACE_MS = 3000;
     let lastMatchAt = Date.now();
@@ -68,9 +76,8 @@ function loop(): void {
     if (!document.hidden && game.snapshot) {
         renderer.resize();
         if (followId) {
-            const target = game.snapshot.self && game.snapshot.self.cells && game.snapshot.self.cells.length > 0
-                ? game.snapshot.self
-                : null;
+            const self = game.snapshot.self;
+            const target = self ? { x: self.x, y: self.y } : null;
             renderer.draw(game.snapshot, followCamera(target, canvas, game.world, 1.5));
         } else {
             renderer.draw(game.snapshot, fullMapCamera(canvas, game.world));

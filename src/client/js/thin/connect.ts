@@ -2,9 +2,9 @@
 // managed). Speaks protocol 1.0: a single `subscribe` handshake with
 // capability flags, followed by `welcome` + `tick` streaming.
 //
-// Returns a GameHandle that exposes the latest snapshot/world/leader-
-// board state and an on() subscription primitive, plus a small sender
-// API (sendTarget / sendFireFood / sendSplit / ...) that pages use
+// Returns a GameHandle that exposes the latest tick/world/leaderboard
+// state and an on() subscription primitive, plus a small sender API
+// (sendTarget / sendSplit / sendEject / sendSay / ...) that pages use
 // instead of touching socket.io directly.
 //
 // Late-subscriber replay: handshake events (connect / disconnect /
@@ -27,26 +27,43 @@ import {
     type Welcome,
     type Reject,
     type Tick,
-    type Leaderboard
+    type Leaderboard,
+    type Message,
+    type Rules
 } from '@cellagents/game-protocol';
 import type { WorldSize } from './camera';
 
 export type { Capability } from '@cellagents/game-protocol';
 
+/** Durable client-identity key kept in localStorage so the server can
+ *  recognise this browser install across sessions. */
+const CLIENT_ID_KEY = 'cellagents.cells.clientId';
+
+function readOrMintClientId(): string {
+    try {
+        const existing = window.localStorage.getItem(CLIENT_ID_KEY);
+        if (existing) return existing;
+        const minted = crypto.randomUUID();
+        window.localStorage.setItem(CLIENT_ID_KEY, minted);
+        return minted;
+    } catch {
+        return crypto.randomUUID();
+    }
+}
+
 export interface ConnectOptions {
     gameServerUrl: string;
-    /** The subscribe handshake payload the client sends to the server.
-     *  The caller is responsible for assembling a legal combination;
-     *  see the protocol module's `validCapabilitySet`. */
+    /** User-agent-like identifier of this build. Mandatory per
+     *  protocol 1.0. Example: `web/4.0.0`. */
+    userAgent: string;
+    /** The subscribe handshake payload the client sends to the server. */
     capabilities: Capability[];
     /** Required when capabilities includes 'presence'. */
     name?: string;
-    /** Required when the capability set is player/bot (presence +
-     *  viewport). Not required for follow viewers (they inherit the
-     *  followed player's viewport). */
+    /** Required when the capability set is player/bot (presence + ...). */
     screen?: { width: number; height: number };
-    /** Required when the capability set is a follow viewer
-     *  (viewport without presence). */
+    /** Required for follow-only subscribers; may be set on
+     *  omniscient+follow spectators too. */
     follow?: string;
 }
 
@@ -60,7 +77,10 @@ type EventName =
     | 'leaderboard'
     | 'died'
     | 'kick'
-    | 'pong';
+    | 'pong'
+    | 'message'
+    | 'actionsChanged'
+    | 'rulesChanged';
 
 type Listener = (payload: unknown) => void;
 
@@ -75,23 +95,30 @@ export interface GameHandle {
     snapshot: Tick | null;
     leaderboard: Array<{ id: string; name: string | null }>;
     world: WorldSize;
-    /** Server-provided id for this subscriber. Set by the welcome
-     *  handler. Clients use it to key against the snapshot. */
+    /** Server-provided id for this subscriber's player row. On a
+     *  presence subscriber this is also the socket id. Null until
+     *  welcome arrives. */
     selfId: string | null;
+    /** Granted capabilities as reported by welcome; identical to
+     *  the requested set in the 1.0 server. */
+    capabilities: Set<Capability>;
+    /** Allowed action types. Updated by `actionsChanged`. */
+    actions: Set<string>;
+    /** Active rules bag. Updated by `rulesChanged`. */
+    rules: Rules;
     on(event: EventName, cb: Listener): () => void;
     disconnect(): void;
-    /** Client -> server. Target steering (heartbeat). */
     sendTarget(target: { x: number; y: number }): void;
-    sendFireFood(): void;
     sendSplit(): void;
-    /** Client -> server. Viewport resize notification. Allowed for
-     *  any viewport-capable subscriber (player or follow viewer). */
+    sendEject(): void;
     sendWindowResized(width: number, height: number): void;
     sendRespawn(): void;
     sendPing(): void;
-    /** Client -> server. Chat message. The server stamps the sender
-     *  from its known identity; the client cannot forge it. */
-    sendChat(message: string): void;
+    /** Chat message. Server stamps the sender. */
+    sendSay(text: string): void;
+    /** Change the follow target (null clears). Gated by `follow`
+     *  server-side; a non-follow subscriber's call is dropped. */
+    sendSetFollow(target: string | null): void;
 }
 
 export function connect(opts: ConnectOptions): GameHandle {
@@ -109,6 +136,9 @@ export function connect(opts: ConnectOptions): GameHandle {
         leaderboard: [],
         world: { width: 5000, height: 5000 },
         selfId: null,
+        capabilities: new Set<Capability>(opts.capabilities),
+        actions: new Set<string>(),
+        rules: {},
         on(event, cb) {
             if (!listeners.has(event)) listeners.set(event, new Set());
             listeners.get(event)!.add(cb);
@@ -123,8 +153,14 @@ export function connect(opts: ConnectOptions): GameHandle {
             socket.disconnect();
         },
         sendTarget(target) { socket.emit(ClientEvent.heartbeat, target); },
-        sendFireFood() { socket.emit(ClientEvent.fireFood); },
-        sendSplit() { socket.emit(ClientEvent.split); },
+        sendSplit() {
+            if (!handle.actions.has('split')) return;
+            socket.emit(ClientEvent.action, { type: 'split' });
+        },
+        sendEject() {
+            if (!handle.actions.has('eject')) return;
+            socket.emit(ClientEvent.action, { type: 'eject' });
+        },
         sendWindowResized(width, height) {
             socket.emit(ClientEvent.windowResized, { width, height });
         },
@@ -133,7 +169,8 @@ export function connect(opts: ConnectOptions): GameHandle {
             pingStartedAt = Date.now();
             socket.emit(ClientEvent.pingcheck);
         },
-        sendChat(message) { socket.emit(ClientEvent.playerChat, { message }); }
+        sendSay(text) { socket.emit(ClientEvent.say, { scope: 'all', text }); },
+        sendSetFollow(target) { socket.emit(ClientEvent.setFollow, { target }); }
     };
 
     const emit = (event: EventName, payload: unknown) => {
@@ -157,15 +194,16 @@ export function connect(opts: ConnectOptions): GameHandle {
     };
     document.addEventListener('visibilitychange', onVisibility);
 
+    const clientId = readOrMintClientId();
+
     socket.on('connect', () => {
         lastEvent.delete('disconnect');
         emit('connect', null);
-        // Fire the handshake. The server rejects anything malformed
-        // via a 'reject' event + disconnect, which bubbles up through
-        // the normal disconnect path.
         socket.emit(ClientEvent.subscribe, {
             protocol: PROTOCOL_VERSION,
+            userAgent: opts.userAgent,
             capabilities: opts.capabilities,
+            clientId,
             ...(opts.name ? { name: opts.name } : {}),
             ...(opts.screen ? { screen: opts.screen } : {}),
             ...(opts.follow ? { follow: opts.follow } : {})
@@ -178,15 +216,16 @@ export function connect(opts: ConnectOptions): GameHandle {
 
     socket.on(ServerEvent.welcome, (payload: Welcome) => {
         handle.world = payload.world;
-        handle.selfId = payload.subscriberId;
+        handle.selfId = payload.self?.id ?? payload.sessionId;
+        handle.capabilities = new Set<Capability>(payload.capabilities);
+        handle.actions = new Set<string>(payload.actions);
+        handle.rules = payload.rules;
         emit('world', payload.world);
         emit('welcome', payload);
     });
 
     socket.on(ServerEvent.reject, (payload: Reject) => {
         emit('reject', payload);
-        // The server also disconnects us; the normal disconnect
-        // handler picks it up.
     });
 
     socket.on(ServerEvent.tick, (payload: Tick) => {
@@ -210,12 +249,22 @@ export function connect(opts: ConnectOptions): GameHandle {
     socket.on(ServerEvent.died, () => emit('died', null));
     socket.on(ServerEvent.kick, (payload: { reason: string }) => emit('kick', payload?.reason ?? ''));
     socket.on(ServerEvent.pongcheck, () => emit('pong', Date.now() - pingStartedAt));
+    socket.on(ServerEvent.message, (payload: Message) => emit('message', payload));
+    socket.on(ServerEvent.actionsChanged, (payload: { actions: string[] }) => {
+        handle.actions = new Set(payload?.actions ?? []);
+        emit('actionsChanged', payload);
+    });
+    socket.on(ServerEvent.rulesChanged, (payload: { rules: Rules }) => {
+        handle.rules = payload?.rules ?? {};
+        emit('rulesChanged', payload);
+    });
 
     return handle;
 }
 
-// If served from the game server itself, default to the serving origin;
-// allow a ?gameServer=http://host:port override for local dev.
+/** If served from the game server itself, default to the serving
+ *  origin; allow a ?gameServer=http://host:port override for local
+ *  dev. */
 export function resolveGameServer(): string {
     const params = new URLSearchParams(window.location.search);
     const override = params.get('gameServer');

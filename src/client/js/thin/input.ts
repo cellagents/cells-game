@@ -128,7 +128,7 @@ export function attachInput(opts: InputOptions): InputHandle {
     function onKeyPress(ev: KeyboardEvent): void {
         const key = ev.which || ev.keyCode;
         if ((key === KEY_W || key === KEY_W_LOWER) && reenviar) {
-            game.sendFireFood();
+            game.sendEject();
             reenviar = false;
         } else if (key === KEY_SPACE && reenviar) {
             try { (document.getElementById('split-cell') as HTMLAudioElement | null)?.play(); } catch { /* audio play may fail without user gesture */ }

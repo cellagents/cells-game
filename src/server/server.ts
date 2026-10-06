@@ -16,14 +16,19 @@ import {
     parseSubscribe,
     ClientEvent,
     ServerEvent,
+    KNOWN_ENTITY_KINDS,
     type Capability,
     type Welcome,
     type Reject,
     type Tick,
-    type PlayerSnapshot,
-    type SelfSnapshot
+    type Entity,
+    type PlayerMeta,
+    type Rules,
+    type Effect,
+    type Message
 } from '@cellagents/game-protocol';
 import { readFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 
 const app = express();
 const server = http.createServer(app);
@@ -33,30 +38,76 @@ const map = new GameMap(config);
 
 const sockets: Record<string, Socket> = {};
 
+/** Grace window during which a freshly spawned (or respawned)
+ *  presence subscriber is `invulnerable`: collisions skip eating
+ *  it. 3s is long enough for a bot to orient and short enough
+ *  that camping on a spawn is not a strategy. */
+const SPAWN_GRACE_MS = 3000;
+
 /** Per-socket subscriber record. Keyed by socket.id. This is the one
  *  truth about what the socket is allowed to send and receive. */
 interface Subscriber {
     socketId: string;
+    /** Caller-chosen stable identity across sessions. Minted when
+     *  the client did not supply one. */
+    clientId: string;
+    /** User-agent-like identifier of the connecting software. */
+    userAgent: string;
+    /** Granted capability set (same as requested in 1.0). */
     capabilities: Set<Capability>;
-    /** Supplied in subscribe. Spectators have null; presence
-     *  subscribers always have a non-null name (validator enforced). */
+    /** Granted action types; non-empty iff `act` is granted. */
+    grantedActions: string[];
+    /** Supplied in subscribe. Non-presence subscribers have null. */
     name: string | null;
     /** Clamped at subscribe time or whenever windowResized arrives. */
     screen: { width: number; height: number } | null;
-    /** Target subscriber id to follow; set only on viewport+follow. */
+    /** Follow-target player id. Only meaningful if `follow` is held. */
     follow: string | null;
-    /** Non-null iff the subscriber currently has a live cell on the
-     *  map. Cleared on death; re-populated on respawn. The record
-     *  stays alive in `subscribers` either way. */
+    /** Non-null iff this subscriber currently has a live body. */
     player: Player | null;
-    /** Last known world-space anchor used for culling. For a live
-     *  presence subscriber the current player.x/y keeps this fresh;
-     *  for a dead one it freezes at the death position. For
-     *  follow subscribers it's updated per tick from the followed
-     *  player. For full-map spectators it's unused (no culling). */
+    /** Last known world-space anchor used for culling (dead
+     *  presence subscribers freeze on it). */
     lastSeen: { x: number; y: number };
+    /** Server-ms timestamp of the last spawn/respawn; drives the
+     *  invulnerable effect and the server-side grace check. */
+    spawnedAt: number;
+    /** Chat rate limiter: timestamps of recent `say` emits used by
+     *  the sliding-window check. */
+    sayHistory: number[];
+    /** Remote address, for the admin audit. */
+    remoteAddress: string;
+    /** Connected-at wall clock, for the admin audit. */
+    connectedAt: number;
 }
 const subscribers: Record<string, Subscriber> = {};
+
+/** Monotonic sequence stamped on every tick. */
+let tickSeq = 0;
+
+/** Entity id counters, one per kind. Food is plentiful; small
+ *  integers are fine. Cells use their index into a player's cells
+ *  array + a prefix of the player id; this stays stable across
+ *  ticks within a session. */
+let nextVirusId = 1;
+let nextFoodId = 1;
+let nextEjectedId = 1;
+
+/** Cell id derivation: because the Cell class doesn't carry an id,
+ *  derive one from the player id + cell index. Keeps the id stable
+ *  while a cell exists at a given slot; splits create fresh slots
+ *  so the id changes, which is the honest answer for the current
+ *  cell model. The post-archival `core` repo can promote cell ids
+ *  to first-class state. */
+function cellId(playerId: string, cellIndex: number): number {
+    // Hash-free encoding: hash the socket id to a 24-bit prefix,
+    // append cellIndex in the low 8 bits. Collisions across sockets
+    // are harmless for rendering/grouping (we also group by owner).
+    let h = 0;
+    for (let i = 0; i < playerId.length; i++) {
+        h = ((h << 5) - h + playerId.charCodeAt(i)) | 0;
+    }
+    return ((h & 0xffffff) << 8) | (cellIndex & 0xff);
+}
 
 app.use(express.json());
 const INIT_MASS_LOG = util.mathLog(config.game.defaultPlayerMass, config.game.slowBase);
@@ -67,10 +118,8 @@ let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
-// Package version for GET /protocol. Read lazily at startup; not
-// recomputed per request. If the file is missing (unlikely in a built
-// container) we fall back to a sentinel; tests can override via the
-// CELLS_SERVER_VERSION env var.
+/** Package version. Read lazily at startup. Tests override via
+ *  CELLS_SERVER_VERSION. */
 const SERVER_VERSION = (() => {
     const env = process.env.CELLS_SERVER_VERSION;
     if (env) return env;
@@ -81,6 +130,11 @@ const SERVER_VERSION = (() => {
         return 'unknown';
     }
 })();
+
+/** Server identity string that goes into `welcome.server` and the
+ *  `/protocol` probe. Mandatory, free-form, recommended format
+ *  `name/semver[+build]`. */
+const SERVER_IDENTITY = `cells-game/${SERVER_VERSION}`;
 
 const clientRoot = path.join(__dirname, '..', 'client');
 app.get('/', (_req, res) => res.sendFile(path.join(clientRoot, 'lobby.html')));
@@ -96,8 +150,7 @@ app.get('/managed', (_req, res) => res.sendFile(path.join(clientRoot, 'managed.h
 app.get('/protocol', (_req, res) => {
     res.json({
         protocol: PROTOCOL_VERSION,
-        server: 'cells-game',
-        version: SERVER_VERSION
+        server: SERVER_IDENTITY
     });
 });
 
@@ -105,10 +158,6 @@ app.get('/protocol', (_req, res) => {
 // client fetches this at page load; see thin/chrome.ts for the
 // consumption side. Every field is sanitised so a malformed config
 // surfaces as safe defaults rather than breaking the chrome row.
-// Each view returns only the buttons that apply to it:
-//   lobby:  theme
-//   admin:  theme + lock
-//   canvas: exit + theme + chat/leaderboard/minimap (as widgets)
 const VIEW_WHITELIST = ['lobby', 'admin', 'player', 'spectator', 'follow', 'managed'] as const;
 type UiViewName = typeof VIEW_WHITELIST[number];
 const ACTION_DEFAULT = { button: true };
@@ -126,7 +175,7 @@ app.get('/ui-config', (req, res) => {
     const rawOf = (name: string) =>
         (ui && typeof ui === 'object' ? (ui as Record<string, unknown>)[name] : null) as
             | Record<string, unknown> | null;
-    const action = (name: string) => {
+    const actionCfg = (name: string) => {
         const raw = rawOf(name);
         if (!raw) return { ...ACTION_DEFAULT };
         return { button: typeof raw.button === 'boolean' ? raw.button : ACTION_DEFAULT.button };
@@ -146,27 +195,23 @@ app.get('/ui-config', (req, res) => {
         };
     };
     if (view === 'lobby') {
-        res.json({ theme: action('theme') });
+        res.json({ theme: actionCfg('theme') });
         return;
     }
     if (view === 'admin') {
-        res.json({ theme: action('theme'), lock: action('lock') });
+        res.json({ theme: actionCfg('theme'), lock: actionCfg('lock') });
         return;
     }
     res.json({
-        exit: action('exit'),
-        theme: action('theme'),
+        exit: actionCfg('exit'),
+        theme: actionCfg('theme'),
         chat: widget('chat'),
         leaderboard: widget('leaderboard'),
         minimap: widget('minimap')
     });
 });
 
-// Public lobby content: lets the lobby page render operator-authored
-// extras (links to the project site, docs, etc.) without rebuilding
-// the client bundle. Only shape-checked fields are exposed; anything
-// unexpected in config.json is dropped silently so a typo cannot
-// inject arbitrary attributes into the DOM.
+// Public lobby content.
 app.get('/lobby-config', (_req, res) => {
     const content = config.client.lobby?.content;
     const sanitize = (list: unknown): Array<{ label: string; href: string }> => {
@@ -184,12 +229,9 @@ app.get('/lobby-config', (_req, res) => {
 
 if (adminEnabled()) {
     app.get('/admin', (_req, res) => res.sendFile(path.join(clientRoot, 'admin.html')));
-    app.use('/admin', createAdminRouter({ io, map, sockets }));
+    app.use('/admin', createAdminRouter({ io, map, sockets, subscribers }));
     console.log('[ADMIN] HTTP admin API enabled at /admin');
 } else {
-    // Admin disabled: 404 anything under /admin and the raw admin.html path
-    // so the static middleware below can't serve them. Nothing distinguishes
-    // "admin was never present" from "admin is turned off" to the outside.
     app.use((req, res, next) => {
         if (req.path === '/admin' || req.path.startsWith('/admin/') || req.path === '/admin.html') {
             res.status(404).end();
@@ -203,14 +245,11 @@ if (adminEnabled()) {
 app.use(express.static(clientRoot));
 
 // Connection handling. The 1.0 server does not read any query string;
-// subscribers connect bare and then declare themselves via a
-// 'subscribe' event. The old `?type=player|spectator` branches are
-// gone. A client that fails to send `subscribe` within the handshake
-// timeout is dropped silently.
+// subscribers connect bare and declare themselves via `subscribe`.
 io.on('connection', (socket: Socket) => {
     const handshakeTimeout = setTimeout(() => {
         if (!subscribers[socket.id]) {
-            socket.emit('reject', {
+            socket.emit(ServerEvent.reject, {
                 code: 'INVALID_PAYLOAD',
                 message: 'no subscribe within handshake window'
             } satisfies Reject);
@@ -218,7 +257,7 @@ io.on('connection', (socket: Socket) => {
         }
     }, 5000);
 
-    socket.once('subscribe', (raw: unknown) => {
+    socket.once(ClientEvent.subscribe, (raw: unknown) => {
         clearTimeout(handshakeTimeout);
         attachSubscriber(socket, raw);
     });
@@ -226,11 +265,15 @@ io.on('connection', (socket: Socket) => {
 
 function generateSpawnpoint() {
     const radius = util.massToRadius(config.game.defaultPlayerMass);
-    return getPosition(config.game.newPlayerInitialPosition === 'farthest', radius, map.players.data as unknown as import('./lib/util').PositionWithRadius[]);
+    return getPosition(
+        config.game.newPlayerInitialPosition === 'farthest',
+        radius,
+        map.players.data as unknown as import('./lib/util').PositionWithRadius[]
+    );
 }
 
 /** Clamp a client-advertised screen rectangle to the server's
- *  configured maximum. Mutates nothing; returns a new object. */
+ *  configured maximum. */
 function clampScreen(screen: { width: number; height: number }): { width: number; height: number } {
     return {
         width: Math.min(screen.width, config.server.maxViewport.width),
@@ -238,47 +281,60 @@ function clampScreen(screen: { width: number; height: number }): { width: number
     };
 }
 
-/** Decide the capability-set-driven role of a subscriber. The three
- *  valid combinations are exhaustive thanks to the SubscribeSchema
- *  semantic validator. */
-function roleOf(caps: Set<Capability>): 'spectator' | 'follow' | 'player' {
-    if (caps.has('presence')) return 'player';
-    if (caps.has('viewport')) return 'follow';
-    return 'spectator';
+/** Compose the current rules bag from live config. Shipped on
+ *  welcome; a future server would emit `rulesChanged` to replace
+ *  the bag mid-session. */
+function currentRules(): Rules {
+    return {
+        eatRatio: 1.1,
+        splitLimit: config.game.limitSplit,
+        defaultPlayerMass: config.game.defaultPlayerMass,
+        foodMass: config.game.foodMass,
+        fireFoodMass: config.game.fireFood,
+        maxHeartbeatInterval: config.server.maxHeartbeatInterval,
+        chatMaxLength: 200,
+        chatRateHz: 2
+    };
 }
 
 function attachSubscriber(socket: Socket, raw: unknown): void {
     const parsed = parseSubscribe(raw);
     if (!parsed.ok) {
-        socket.emit('reject', { code: parsed.code, message: parsed.message } satisfies Reject);
+        socket.emit(ServerEvent.reject, { code: parsed.code, message: parsed.message } satisfies Reject);
         socket.disconnect();
         return;
     }
 
     const sub = parsed.value;
     const caps = new Set<Capability>(sub.capabilities);
-    const role = roleOf(caps);
+    const now = Date.now();
 
     // Register BEFORE emitting welcome so the per-event capability
     // gates below find the record on their first lookup.
     sockets[socket.id] = socket;
+    const grantedActions = caps.has('act') ? ['split', 'eject'] : [];
     const record: Subscriber = {
         socketId: socket.id,
+        clientId: sub.clientId ?? randomUUID(),
+        userAgent: sub.userAgent,
         capabilities: caps,
+        grantedActions,
         name: sub.name ?? null,
         screen: sub.screen ? clampScreen(sub.screen) : null,
         follow: sub.follow ?? null,
         player: null,
-        // Default anchor to the map centre; refined per role below
-        // and kept fresh by sendUpdates.
-        lastSeen: { x: config.game.width / 2, y: config.game.height / 2 }
+        lastSeen: { x: config.game.width / 2, y: config.game.height / 2 },
+        spawnedAt: 0,
+        sayHistory: [],
+        remoteAddress: socket.handshake.address,
+        connectedAt: now
     };
     subscribers[socket.id] = record;
 
-    if (role === 'player') {
+    if (caps.has('presence')) {
         const player = new playerUtils.Player(socket.id);
         if (map.players.findIndexByID(socket.id) > -1) {
-            socket.emit('reject', {
+            socket.emit(ServerEvent.reject, {
                 code: 'INVALID_PAYLOAD',
                 message: 'duplicate player id'
             } satisfies Reject);
@@ -296,34 +352,38 @@ function attachSubscriber(socket: Socket, raw: unknown): void {
         map.players.pushNew(player);
         record.player = player;
         record.lastSeen = { x: player.x, y: player.y };
+        record.spawnedAt = now;
         io.emit(ServerEvent.playerJoin, { name: player.name });
         console.log('[INFO] Player ' + player.name + ' connected (presence subscriber).');
     } else {
-        // Spectator or follow viewer; neither occupies the map.
         io.emit(ServerEvent.playerJoin, { name: '' });
     }
 
-    socket.emit('welcome', welcomeFor(record));
+    socket.emit(ServerEvent.welcome, welcomeFor(record));
 
     wireEvents(socket, record);
 }
 
-/** Compose the welcome payload for a subscriber. The validator
- *  guarantees that a presence subscriber had a name on subscribe, so
- *  record.name is non-null whenever record.player is. */
+/** Compose the welcome payload for a subscriber. */
 function welcomeFor(record: Subscriber): Welcome {
     return {
         protocol: PROTOCOL_VERSION,
-        subscriberId: record.socketId,
+        server: SERVER_IDENTITY,
+        sessionId: record.socketId,
+        clientId: record.clientId,
         world: { width: config.game.width, height: config.game.height },
+        capabilities: Array.from(record.capabilities),
+        actions: [...record.grantedActions],
+        rules: currentRules(),
         self: record.player && record.name !== null
             ? { id: record.player.id, name: record.name, hue: record.player.hue }
             : null
     };
 }
 
-/** Capability-gated event wiring. Every handler checks the current
- *  subscriber record so revocation (if we ever add it) just works. */
+/** Capability-gated event wiring. Every handler re-reads the
+ *  subscriber record so capability revocation (if we ever add it)
+ *  takes effect without re-wiring. */
 function wireEvents(socket: Socket, record: Subscriber): void {
     socket.on('disconnect', () => {
         cleanupSocket(socket, /* notifyOthers */ true);
@@ -333,11 +393,12 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         socket.emit(ServerEvent.pongcheck);
     });
 
-    // windowResized is a viewport concern; a follow viewer with no
-    // screen advertised ignores it (its viewport comes from the
-    // followed player's screen in the legacy fan-out path).
+    // windowResized hints the server's culling policy; only a
+    // presence subscriber has one, since omniscient subscribers
+    // see everything and follow viewers inherit the followed
+    // player's screen.
     socket.on(ClientEvent.windowResized, (data: { width?: number; height?: number }) => {
-        if (!record.capabilities.has('viewport')) return;
+        if (!record.capabilities.has('presence')) return;
         if (typeof data?.width !== 'number' || typeof data?.height !== 'number') return;
         const clamped = clampScreen({ width: data.width, height: data.height });
         record.screen = clamped;
@@ -348,30 +409,61 @@ function wireEvents(socket: Socket, record: Subscriber): void {
     });
 
     socket.on(ClientEvent.respawn, () => {
-        if (!record.capabilities.has('steer') || !record.player) return;
+        if (!record.capabilities.has('presence') || !record.player) return;
         map.players.removePlayerByID(record.player.id);
         record.player.init(generateSpawnpoint(), config.game.defaultPlayerMass);
         map.players.pushNew(record.player);
-        socket.emit('welcome', welcomeFor(record));
+        record.spawnedAt = Date.now();
+        socket.emit(ServerEvent.welcome, welcomeFor(record));
         console.log('[INFO] User ' + record.name + ' has respawned');
     });
 
-    socket.on(ClientEvent.playerChat, (data: { message?: unknown }) => {
-        if (!record.capabilities.has('presence') || !record.player || record.name === null) return;
-        if (typeof data?.message !== 'string') return;
-        const stripped = data.message.replace(/(<([^>]+)>)/ig, '').substring(0, 35);
+    socket.on(ClientEvent.say, (data: unknown) => {
+        if (!record.capabilities.has('chat') || !record.player || record.name === null) return;
+        if (!data || typeof data !== 'object') return;
+        const d = data as { scope?: unknown; to?: unknown; text?: unknown; data?: unknown };
+        if (d.scope !== 'all' && d.scope !== 'team' && d.scope !== 'direct') return;
+        if (typeof d.text !== 'string') return;
+
+        // Rate limit (sliding window). chatRateHz events per second.
+        const rules = currentRules();
+        const rateHz = typeof rules.chatRateHz === 'number' ? rules.chatRateHz : 2;
+        const maxLen = typeof rules.chatMaxLength === 'number' ? rules.chatMaxLength : 200;
+        const now = Date.now();
+        record.sayHistory = record.sayHistory.filter((t) => now - t < 1000);
+        if (record.sayHistory.length >= rateHz) return;
+        record.sayHistory.push(now);
+
+        const stripped = d.text.replace(/(<([^>]+)>)/ig, '').substring(0, maxLen);
         if (!stripped) return;
 
         if (config.server.logChat) {
-            const d = new Date();
-            console.log('[CHAT] [' + d.getHours() + ':' + d.getMinutes() + '] ' + record.name + ': ' + stripped);
+            const t = new Date();
+            console.log('[CHAT] [' + t.getHours() + ':' + t.getMinutes() + '] ' + record.name + ': ' + stripped);
         }
 
-        // Sender is server-authoritative. The client cannot forge it.
-        socket.broadcast.emit(ServerEvent.serverSendPlayerChat, {
-            sender: record.name,
-            message: stripped
-        });
+        // Routing. `team` is reserved; the 1.0 server drops it silently.
+        const message: Message = {
+            from: { id: record.player.id, name: record.name },
+            scope: d.scope,
+            text: stripped,
+            time: now
+        };
+
+        if (d.scope === 'all') {
+            // Everyone (including the sender) sees it; the sender's
+            // own render path treats their from.id === self.id as "me".
+            io.emit(ServerEvent.message, message);
+        } else if (d.scope === 'direct') {
+            if (typeof d.to !== 'string' || !d.to) return;
+            const targetSocketId = Object.values(subscribers).find((s) => s.player?.id === d.to)?.socketId;
+            if (!targetSocketId) return;
+            const targetSocket = sockets[targetSocketId];
+            if (targetSocket) targetSocket.emit(ServerEvent.message, message);
+            // Echo to sender too so their chat UI shows what they sent.
+            socket.emit(ServerEvent.message, message);
+        }
+        // scope === 'team' falls through: dropped silently.
 
         chatRepository.logChatMessage(record.name, stripped, record.player.ipAddress)
             .catch((err) => console.error('Error when attempting to log chat message', err));
@@ -385,20 +477,37 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
     });
 
-    socket.on(ClientEvent.fireFood, () => {
-        if (!record.capabilities.has('steer') || !record.player) return;
-        const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
-        for (let i = 0; i < record.player.cells.length; i++) {
-            if (record.player.cells[i].mass >= minCellMass) {
-                record.player.changeCellMass(i, -config.game.fireFood);
-                map.massFood.addNew(record.player, i, config.game.fireFood);
+    socket.on(ClientEvent.action, (data: unknown) => {
+        if (!record.capabilities.has('act') || !record.player) return;
+        if (!data || typeof data !== 'object') return;
+        const d = data as { type?: unknown };
+        if (typeof d.type !== 'string') return;
+        if (!record.grantedActions.includes(d.type)) return;
+
+        if (d.type === 'split') {
+            record.player.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
+        } else if (d.type === 'eject') {
+            const minCellMass = config.game.defaultPlayerMass + config.game.fireFood;
+            for (let i = 0; i < record.player.cells.length; i++) {
+                if (record.player.cells[i].mass >= minCellMass) {
+                    record.player.changeCellMass(i, -config.game.fireFood);
+                    map.massFood.addNew(record.player, i, config.game.fireFood);
+                }
             }
         }
     });
 
-    socket.on(ClientEvent.split, () => {
-        if (!record.capabilities.has('steer') || !record.player) return;
-        record.player.userSplit(config.game.limitSplit, config.game.defaultPlayerMass);
+    socket.on(ClientEvent.setFollow, (data: unknown) => {
+        if (!record.capabilities.has('follow')) return;
+        if (!data || typeof data !== 'object') return;
+        const d = data as { target?: unknown };
+        if (d.target === null) {
+            record.follow = null;
+            return;
+        }
+        if (typeof d.target === 'string' && d.target.length > 0) {
+            record.follow = d.target;
+        }
     });
 }
 
@@ -472,8 +581,15 @@ const tickGame = () => {
     map.massFood.move(config.game.width, config.game.height);
 
     map.players.handleCollisions((gotEaten, eater) => {
-        const cellGotEaten = map.players.getCell(gotEaten.playerIndex, gotEaten.cellIndex);
+        const victimPlayer = map.players.data[gotEaten.playerIndex];
+        const victimRecord = victimPlayer ? subscribers[victimPlayer.id] : null;
+        // Spawn-grace invulnerability: a subscriber whose
+        // record.spawnedAt is within SPAWN_GRACE_MS cannot be eaten.
+        if (victimRecord && Date.now() < victimRecord.spawnedAt + SPAWN_GRACE_MS) {
+            return;
+        }
 
+        const cellGotEaten = map.players.getCell(gotEaten.playerIndex, gotEaten.cellIndex);
         map.players.data[eater.playerIndex].changeCellMass(eater.cellIndex, cellGotEaten.mass);
 
         const playerDied = map.players.removeCell(gotEaten.playerIndex, gotEaten.cellIndex);
@@ -484,13 +600,10 @@ const tickGame = () => {
                 playerEatenName: playerGotEaten.name,
                 killerName: killer?.name ?? null
             });
-            const victimRecord = subscribers[playerGotEaten.id];
-            if (victimRecord) {
-                // Freeze the culling anchor at the death spot so the
-                // dead subscriber keeps receiving the local area
-                // (self:null) until it emits respawn.
-                victimRecord.lastSeen = { x: playerGotEaten.x, y: playerGotEaten.y };
-                victimRecord.player = null;
+            const victim = subscribers[playerGotEaten.id];
+            if (victim) {
+                victim.lastSeen = { x: playerGotEaten.x, y: playerGotEaten.y };
+                victim.player = null;
             }
             sockets[playerGotEaten.id].emit(ServerEvent.died);
             map.players.removePlayerByIndex(gotEaten.playerIndex);
@@ -524,110 +637,180 @@ const gameloop = () => {
     map.balanceMass(config.game.foodMass, config.game.mass, config.game.maxFood, config.game.maxVirus);
 };
 
-/** Compose and emit a tick for one subscriber. Centralises the three
- *  camera semantics (presence, follow, full-map) plus the dead-state
- *  behaviour (presence record whose player is null). */
-function emitTickFor(socket: Socket, record: Subscriber): void {
-    // self (per spec): own player for presence subscribers (null
-    // between death and respawn); followed player for viewport+follow
-    // viewers (null if the target is gone); null for full-map
-    // spectators.
+// -------- Tick builders ------------------------------------------------------
+
+/** Convert a Player's cells into Entity records with kind='cell'. */
+function cellsToEntities(p: Player, now: number): Entity[] {
+    const noMergeUntil = p.timeToMerge && p.timeToMerge > now ? p.timeToMerge : null;
+    const noMergeEffects: Effect[] | undefined = noMergeUntil !== null
+        ? [{ type: 'noMerge', until: noMergeUntil }]
+        : undefined;
+    return p.cells.map((c, i) => ({
+        kind: 'cell' as const,
+        id: cellId(p.id, i),
+        x: c.x,
+        y: c.y,
+        mass: c.mass,
+        radius: c.radius,
+        owner: p.id,
+        ...(noMergeEffects ? { effects: noMergeEffects } : {})
+    }));
+}
+
+function playerMetaOf(p: Player, now: number): PlayerMeta {
+    const record = subscribers[p.id];
+    const invulnerableUntil = record ? record.spawnedAt + SPAWN_GRACE_MS : 0;
+    const effects: Effect[] = [];
+    if (invulnerableUntil > now) {
+        effects.push({ type: 'invulnerable', until: invulnerableUntil });
+    }
+    return {
+        id: p.id,
+        name: p.name,
+        hue: p.hue,
+        massTotal: Math.round(p.massTotal),
+        x: p.x,
+        y: p.y,
+        ...(effects.length ? { effects } : {})
+    };
+}
+
+/** Compose and emit a tick for one subscriber. Centralises the four
+ *  camera semantics (presence, dead presence, follow, omniscient)
+ *  and the entity-list build. */
+function emitTickFor(socket: Socket, record: Subscriber, now: number): void {
     let selfPlayer: Player | null = null;
     let anchor: { x: number; y: number } | null = null;
     let screen: { width: number; height: number } | null = null;
+    let allowFullMap = false;    // omniscient subscribers see unculled
 
-    if (record.player) {
-        selfPlayer = record.player;
-        anchor = { x: record.player.x, y: record.player.y };
-        screen = record.screen;
-        record.lastSeen = anchor;
-    } else if (record.capabilities.has('presence')) {
-        // Dead presence subscriber awaiting respawn.
-        anchor = record.lastSeen;
-        screen = record.screen;
-    } else if (record.capabilities.has('viewport') && record.follow) {
+    if (record.capabilities.has('presence')) {
+        if (record.player) {
+            selfPlayer = record.player;
+            anchor = { x: record.player.x, y: record.player.y };
+            screen = record.screen;
+            record.lastSeen = anchor;
+        } else {
+            // Dead presence subscriber awaiting respawn.
+            anchor = record.lastSeen;
+            screen = record.screen;
+        }
+    } else if (record.capabilities.has('follow') && record.follow) {
         const target = map.players.data.find((p) => p.id === record.follow);
         if (target && target.screenWidth && target.screenHeight) {
             selfPlayer = target;
             anchor = { x: target.x, y: target.y };
             screen = { width: target.screenWidth, height: target.screenHeight };
             record.lastSeen = anchor;
+        } else if (record.capabilities.has('omniscient')) {
+            // Follow target gone + omniscient granted: full-map
+            // fallback instead of an empty tick.
+            allowFullMap = true;
         }
+        // else: follow-only, target gone → empty tick (handled below).
+    } else if (record.capabilities.has('omniscient')) {
+        allowFullMap = true;
     }
+    // No match: either a follow-only subscriber with no target or a
+    // dead presence with no screen. Empty tick.
 
-    const anchorAndScreen = anchor && screen ? { anchor, screen } : null;
-    const inView = anchorAndScreen
+    const culled = anchor && screen ? { anchor, screen } : null;
+    const inView = culled
         ? (e: { x: number; y: number; radius: number }) => util.testRectangleRectangle(
             e.x, e.y, e.radius * 1.1, e.radius * 1.1,
-            anchorAndScreen.anchor.x, anchorAndScreen.anchor.y,
-            anchorAndScreen.screen.width / 2, anchorAndScreen.screen.height / 2
+            culled.anchor.x, culled.anchor.y,
+            culled.screen.width / 2, culled.screen.height / 2
         )
-        : () => true;
+        : null;
 
-    const food = (anchorAndScreen ? map.food.data.filter(inView) : map.food.data)
-        .map((f) => ({ x: f.x, y: f.y, hue: f.hue, radius: f.radius }));
-    const viruses = (anchorAndScreen ? map.viruses.data.filter(inView) : map.viruses.data)
-        .map((v) => ({ x: v.x, y: v.y, radius: v.radius }));
-    const mass = (anchorAndScreen ? map.massFood.data.filter(inView) : map.massFood.data)
-        .map((m) => ({
-            x: m.x,
-            y: m.y,
-            hue: typeof m.hue === 'number' ? m.hue : 0,
-            radius: typeof m.radius === 'number' ? m.radius : 10
-        }));
-    const players = (anchorAndScreen
-        ? map.players.data.filter((p) => p.cells.some((c) => inView(c)))
-        : map.players.data
-    ).map(playerSnapshot);
+    const unculled = allowFullMap && !culled;
+
+    const foodEntities: Entity[] = ((unculled || inView === null) && !allowFullMap && !culled
+        ? []
+        : (unculled ? map.food.data : (culled && inView ? map.food.data.filter(inView) : []))
+    ).map((f) => ({
+        kind: 'food' as const,
+        id: foodWireId(f),
+        x: f.x,
+        y: f.y,
+        mass: config.game.foodMass,
+        radius: f.radius,
+        hue: f.hue
+    }));
+
+    const virusEntities: Entity[] = ((unculled || inView === null) && !allowFullMap && !culled
+        ? []
+        : (unculled ? map.viruses.data : (culled && inView ? map.viruses.data.filter(inView) : []))
+    ).map((v) => ({
+        kind: 'virus' as const,
+        id: virusWireId(v),
+        x: v.x,
+        y: v.y,
+        mass: v.mass,
+        radius: v.radius
+    }));
+
+    const ejectedEntities: Entity[] = ((unculled || inView === null) && !allowFullMap && !culled
+        ? []
+        : (unculled ? map.massFood.data : (culled && inView ? map.massFood.data.filter(inView) : []))
+    ).map((m) => ({
+        kind: 'ejected' as const,
+        id: ejectedWireId(m),
+        x: m.x,
+        y: m.y,
+        mass: m.mass,
+        radius: m.radius,
+        hue: m.hue
+    }));
+
+    // Visible players (including self when it has cells).
+    const visiblePlayers = (unculled
+        ? map.players.data
+        : (culled && inView
+            ? map.players.data.filter((p) => p.cells.some((c) => inView(c)))
+            : (selfPlayer ? [selfPlayer] : []))
+    );
+    const cellEntities = visiblePlayers.flatMap((p) => cellsToEntities(p, now));
+
+    const players: PlayerMeta[] = visiblePlayers.map((p) => playerMetaOf(p, now));
 
     const tick: Tick = {
-        self: selfPlayer ? selfSnapshot(selfPlayer) : null,
+        seq: tickSeq,
+        time: now,
+        self: selfPlayer ? playerMetaOf(selfPlayer, now) : null,
         players,
-        food,
-        mass,
-        viruses
+        entities: [...cellEntities, ...foodEntities, ...ejectedEntities, ...virusEntities]
     };
     socket.emit(ServerEvent.tick, tick);
     if (leaderboardChanged) sendLeaderboard(socket);
 }
 
-function playerSnapshot(p: Player): PlayerSnapshot {
-    return {
-        id: p.id,
-        name: p.name,
-        hue: p.hue,
-        massTotal: Math.round(p.massTotal),
-        cells: p.cells.map((c) => ({
-            x: c.x,
-            y: c.y,
-            mass: c.mass,
-            radius: c.radius
-        }))
-    };
+// Stable wire ids per entity instance. These are allocated at
+// construction and stored on each entity so a tick emits the same
+// id each time until the entity is removed.
+function foodWireId(f: unknown): number {
+    const fe = f as { wireId?: number };
+    if (typeof fe.wireId !== 'number') fe.wireId = nextFoodId++;
+    return fe.wireId;
 }
-
-function selfSnapshot(p: Player): SelfSnapshot {
-    return {
-        id: p.id,
-        name: p.name,
-        x: p.x,
-        y: p.y,
-        hue: p.hue,
-        massTotal: Math.round(p.massTotal),
-        cells: p.cells.map((c) => ({
-            x: c.x,
-            y: c.y,
-            mass: c.mass,
-            radius: c.radius
-        }))
-    };
+function virusWireId(v: unknown): number {
+    const ve = v as { wireId?: number };
+    if (typeof ve.wireId !== 'number') ve.wireId = nextVirusId++;
+    return ve.wireId;
+}
+function ejectedWireId(m: unknown): number {
+    const me = m as { wireId?: number };
+    if (typeof me.wireId !== 'number') me.wireId = nextEjectedId++;
+    return me.wireId;
 }
 
 const sendUpdates = () => {
+    tickSeq++;
+    const now = Date.now();
     for (const record of Object.values(subscribers)) {
         const socket = sockets[record.socketId];
         if (!socket) continue;
-        emitTickFor(socket, record);
+        emitTickFor(socket, record, now);
     }
     leaderboardChanged = false;
 };
@@ -638,6 +821,11 @@ const sendLeaderboard = (socket: Socket) => {
         leaderboard
     });
 };
+
+// Exported for the admin surface + for KNOWN_ENTITY_KINDS smoke
+// (keeps the import alive).
+export { subscribers };
+void KNOWN_ENTITY_KINDS;
 
 setInterval(tickGame, 1000 / config.server.loopRates.physicsHz);
 setInterval(gameloop, 1000 / config.server.loopRates.metabolismHz);
