@@ -22,9 +22,9 @@ if (!followId) {
     throw new Error('redirecting: no ?player= on /follow');
 }
 
-const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
-const info = document.getElementById('info');
+const info = document.getElementById('follow-info');
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'viewport', follow: followId });
 

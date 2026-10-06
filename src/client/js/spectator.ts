@@ -8,7 +8,7 @@ import { fullMapCamera } from './thin/camera';
 import { createViewport } from './thin/viewport';
 import { attachMinimap } from './thin/minimap';
 
-const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 
 const game = connect({ gameServerUrl: resolveGameServer(), data: 'full' });

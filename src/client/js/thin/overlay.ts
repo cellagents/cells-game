@@ -1,9 +1,9 @@
 // Minimal overlay helper shared by the spectator and follow pages.
 // Expects the HTML has:
-//   <div id="statusOverlay" hidden>
+//   <div id="status-overlay" hidden>
 //     <div class="status-card">
-//       <p id="statusMessage"></p>
-//       <a id="statusAction" href="/" hidden>Back to lobby</a>
+//       <p id="status-message"></p>
+//       <a id="status-action" href="/" hidden>Back to lobby</a>
 //     </div>
 //   </div>
 
@@ -20,9 +20,9 @@ export class StatusOverlay {
     private action: HTMLElement | null;
 
     constructor(private readonly opts: StatusOptions) {
-        this.root = document.getElementById('statusOverlay');
-        this.msg = document.getElementById('statusMessage');
-        this.action = document.getElementById('statusAction');
+        this.root = document.getElementById('status-overlay');
+        this.msg = document.getElementById('status-message');
+        this.action = document.getElementById('status-action');
     }
 
     show(message: string, withExit = false): void {

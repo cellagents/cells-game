@@ -25,7 +25,7 @@ if (!rawName || !/^\w+$/.test(rawName)) {
 }
 const playerName = rawName.substring(0, 25);
 
-const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 
 // User-adjustable render switches controlled by chat commands.
@@ -173,7 +173,7 @@ createViewport({
             vp?.chat?.addChat(playerName, text);
         }
     },
-    leaderboardEl: document.getElementById('status'),
+    leaderboardEl: document.getElementById('leaderboard'),
     highlightId: () => game.selfId
 }).then((handle) => {
     vp = handle;

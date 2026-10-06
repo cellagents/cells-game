@@ -19,7 +19,7 @@ import { attachMinimap } from './thin/minimap';
 const params = new URLSearchParams(window.location.search);
 const followId = params.get('player');
 
-const canvas = document.getElementById('cvs') as HTMLCanvasElement;
+const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 
 // Follow-camera uses the viewport-slice stream so the server doesn't

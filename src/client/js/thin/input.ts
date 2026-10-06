@@ -131,7 +131,7 @@ export function attachInput(opts: InputOptions): InputHandle {
             game.sendFireFood();
             reenviar = false;
         } else if (key === KEY_SPACE && reenviar) {
-            try { (document.getElementById('split_cell') as HTMLAudioElement | null)?.play(); } catch { /* audio play may fail without user gesture */ }
+            try { (document.getElementById('split-cell') as HTMLAudioElement | null)?.play(); } catch { /* audio play may fail without user gesture */ }
             game.sendSplit();
             reenviar = false;
         } else if (key === 13 /* Enter */ && onChatFocus) {

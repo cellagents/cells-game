@@ -64,11 +64,11 @@ export interface ViewportHandle {
 }
 
 const BUTTON_IDS = {
-    exit: 'exitToMenu',
-    theme: 'themeToggle',
-    chat: 'chatToggle',
-    leaderboard: 'leaderboardToggle',
-    minimap: 'minimapToggle'
+    exit: 'exit-to-menu',
+    theme: 'theme-toggle',
+    chat: 'chat-toggle',
+    leaderboard: 'leaderboard-toggle',
+    minimap: 'minimap-toggle'
 } as const;
 const BODY_HIDDEN_CLASS = {
     chat: 'chat-hidden',
