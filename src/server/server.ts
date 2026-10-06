@@ -43,19 +43,15 @@ app.get('/spectator', (_req, res) => res.sendFile(path.join(clientRoot, 'spectat
 app.get('/follow', (_req, res) => res.sendFile(path.join(clientRoot, 'follow.html')));
 app.get('/managed', (_req, res) => res.sendFile(path.join(clientRoot, 'managed.html')));
 
-// Public lobby config: lets the lobby page render operator-configured
-// extra buttons (links to the project site, docs, etc.) without
-// rebuilding the client bundle. Only shape-checked fields are exposed;
-// anything unexpected in config.json is dropped silently so a typo
-// cannot inject arbitrary attributes into the DOM.
 // Per-view UI config for the client's floating-button chrome. The
-// client fetches this at viewport load; see thin/viewport.ts for the
+// client fetches this at page load; see thin/chrome.ts for the
 // consumption side. Every field is sanitised so a malformed config
 // surfaces as safe defaults rather than breaking the chrome row.
-// Two shapes:
-//   actions  (exit, theme):  { button }
-//   widgets  (chat, leaderboard, minimap):  { button, defaultVisible }
-const VIEW_WHITELIST = ['player', 'spectator', 'follow', 'managed'] as const;
+// Each view returns only the buttons that apply to it:
+//   lobby:  theme
+//   admin:  theme + lock
+//   canvas: exit + theme + chat/leaderboard/minimap (as widgets)
+const VIEW_WHITELIST = ['lobby', 'admin', 'player', 'spectator', 'follow', 'managed'] as const;
 type UiViewName = typeof VIEW_WHITELIST[number];
 const ACTION_DEFAULT = { button: true };
 const WIDGET_DEFAULT = { button: true, defaultVisible: { desktop: true, mobile: false } };
@@ -72,12 +68,12 @@ app.get('/ui-config', (req, res) => {
     const rawOf = (name: string) =>
         (ui && typeof ui === 'object' ? (ui as Record<string, unknown>)[name] : null) as
             | Record<string, unknown> | null;
-    const action = (name: 'exit' | 'theme') => {
+    const action = (name: string) => {
         const raw = rawOf(name);
         if (!raw) return { ...ACTION_DEFAULT };
         return { button: typeof raw.button === 'boolean' ? raw.button : ACTION_DEFAULT.button };
     };
-    const widget = (name: 'chat' | 'leaderboard' | 'minimap') => {
+    const widget = (name: string) => {
         const raw = rawOf(name);
         if (!raw) return { ...WIDGET_DEFAULT };
         const dv = (raw.defaultVisible && typeof raw.defaultVisible === 'object'
@@ -91,6 +87,14 @@ app.get('/ui-config', (req, res) => {
             }
         };
     };
+    if (view === 'lobby') {
+        res.json({ theme: action('theme') });
+        return;
+    }
+    if (view === 'admin') {
+        res.json({ theme: action('theme'), lock: action('lock') });
+        return;
+    }
     res.json({
         exit: action('exit'),
         theme: action('theme'),

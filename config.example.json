@@ -41,7 +41,11 @@
     "client": {
         "global": {},
         "admin": {
-            "pass": "DEFAULT"
+            "pass": "DEFAULT",
+            "ui": {
+                "theme": { "button": true },
+                "lock":  { "button": true }
+            }
         },
         "lobby": {
             "content": {
@@ -49,6 +53,9 @@
                     { "label": "Official site", "href": "https://cellagents.dev/" },
                     { "label": "About", "href": "https://cellagents.dev/about" }
                 ]
+            },
+            "ui": {
+                "theme": { "button": true }
             }
         },
         "player": {
