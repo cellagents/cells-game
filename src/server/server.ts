@@ -648,7 +648,7 @@ const calculateLeaderboard = () => {
 const gameloop = () => {
     if (map.players.data.length > 0) {
         calculateLeaderboard();
-        map.players.shrinkCells(config.game.massLossRate, config.game.defaultPlayerMass, config.game.minMassLoss);
+        map.players.shrinkCells(config.game.massLossRate, config.game.massLossExponent, config.game.defaultPlayerMass, config.game.minMassLoss);
     }
 
     map.balanceMass(config.game.foodMass, config.game.mass, config.game.maxFood, config.game.maxVirus);

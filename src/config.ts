@@ -70,6 +70,12 @@ export interface GameConfig {
     virus: VirusConfig;
     slowBase: number;
     massLossRate: number;
+    /** Exponent on cell mass in the non-linear decay formula
+     *  (per-cell loss per metabolism tick =
+     *  `(massLossRate / 1000) * mass ^ massLossExponent`).
+     *  1.0 is the historic flat-fraction decay; >1 makes big
+     *  cells shrink progressively harder. */
+    massLossExponent: number;
     minMassLoss: number;
     defaultPlayerMass: number;
     limitSplit: number;
@@ -242,6 +248,15 @@ function loadConfig(): Config {
     if (!cfg.server.maxViewport) {
         cfg.server.maxViewport = { width: 2560, height: 2560 };
     }
+    // massLossExponent was added in 4.0.2; a pre-4.0.2 config file
+    // lacks the key and would otherwise feed NaN to Math.pow and
+    // halt all decay. Fall back to the pre-4.0.2 flat-fraction
+    // behaviour (exponent 1.0) so an un-migrated config boots with
+    // no visible gameplay change.
+    if (typeof cfg.game.massLossExponent !== 'number' || !isFinite(cfg.game.massLossExponent)) {
+        cfg.game.massLossExponent = 1.0;
+    }
+    cfg.game.massLossExponent = envInt('MASS_LOSS_EXPONENT', cfg.game.massLossExponent);
 
     return cfg;
 }

@@ -33,6 +33,7 @@
         },
         "slowBase": 4.5,
         "massLossRate": 1,
+        "massLossExponent": 1.5,
         "minMassLoss": 50,
         "defaultPlayerMass": 10,
         "limitSplit": 16,

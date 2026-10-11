@@ -150,10 +150,26 @@ export class Player {
         this.timeToMerge = Date.now() + 1000 * MERGE_TIMER;
     }
 
-    loseMassIfNeeded(massLossRate: number, defaultPlayerMass: number, minMassLoss: number): void {
+    /** Non-linear per-cell decay: lost mass per metabolism tick is
+     *  `k * cell.mass ^ exponent`, where `k = massLossRate / 1000`
+     *  and `exponent = massLossExponent`. An exponent >1 makes big
+     *  cells shed a growing fraction of their mass per tick
+     *  (bigger = squeezed harder); exponent 1.0 reproduces the
+     *  historic flat-fraction decay. Gates: a player whose total
+     *  mass is at or below minMassLoss is skipped entirely, and no
+     *  cell is ever shrunk below defaultPlayerMass. */
+    loseMassIfNeeded(
+        massLossRate: number,
+        massLossExponent: number,
+        defaultPlayerMass: number,
+        minMassLoss: number
+    ): void {
+        if (this.massTotal <= minMassLoss) return;
+        const k = massLossRate / 1000;
         for (const i in this.cells) {
-            if (this.cells[i].mass * (1 - (massLossRate / 1000)) > defaultPlayerMass && this.massTotal > minMassLoss) {
-                const massLoss = this.cells[i].mass * (massLossRate / 1000);
+            const mass = this.cells[i].mass;
+            const massLoss = k * Math.pow(mass, massLossExponent);
+            if (mass - massLoss > defaultPlayerMass) {
                 this.changeCellMass(Number(i), -massLoss);
             }
         }
@@ -334,9 +350,9 @@ export class PlayerManager {
         this.data.splice(index, 1);
     }
 
-    shrinkCells(massLossRate: number, defaultPlayerMass: number, minMassLoss: number): void {
+    shrinkCells(massLossRate: number, massLossExponent: number, defaultPlayerMass: number, minMassLoss: number): void {
         for (const player of this.data) {
-            player.loseMassIfNeeded(massLossRate, defaultPlayerMass, minMassLoss);
+            player.loseMassIfNeeded(massLossRate, massLossExponent, defaultPlayerMass, minMassLoss);
         }
     }
 

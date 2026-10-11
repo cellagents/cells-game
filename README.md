@@ -44,6 +44,7 @@ the JSON file, useful for Docker, CI and test harnesses:
 | `PORT` | `port` |
 | `ADMIN_PASS` | `adminPass` (bearer token for the `/admin/*` HTTP API). If unset, empty, or the shipped `"DEFAULT"` placeholder, the admin console is **disabled entirely** and every `/admin*` route returns 404. |
 | `MAX_HEARTBEAT_INTERVAL` | `maxHeartbeatInterval`. Set to `0` to disable the kick entirely. |
+| `MASS_LOSS_EXPONENT` | `massLossExponent`. Exponent on cell mass in the per-tick decay formula `(massLossRate / 1000) * mass ^ exponent`. `1.0` = flat-fraction (historic), `1.5` = default aggressive squeeze on big cells. |
 | `CELLAGENTS_GAME_CONFIG` | absolute path to an alternate config file |
 
 ## Running
