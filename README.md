@@ -20,8 +20,9 @@ Visit [**cellagents.dev**](https://cellagents.dev/) for overview of the full pro
 - Press `space` to split, `w` to spit food.
 - Objective: outgrow and outlast everyone else.
 
-Players without any mass yet are briefly invincible so new joiners
-have a grace period. The bigger you are, the slower you move.
+For 3 seconds after spawning or respawning, a player is
+invulnerable: nothing can eat them, but they can still eat others.
+The bigger you are, the slower you move.
 
 ## Technical overview
 
@@ -74,6 +75,16 @@ Or with Docker:
 docker build -t cells-game .
 docker run --rm -p 3000:3000 cells-game
 ```
+
+## Protocol
+
+The wire format is version `1.0`, authored and published as
+[`@cellagents/game-protocol`](https://github.com/cellagents/game-protocol).
+The server advertises its version via `GET /protocol`, which
+returns `{ protocol: "1.0", server: "cells-game/<version>" }`.
+For the full event grammar, capability flags, entity-kind
+registry, effects and rules bag, see the protocol repo's
+[`REGISTRY.md`](https://github.com/cellagents/game-protocol/blob/main/REGISTRY.md).
 
 ## Lineage
 
