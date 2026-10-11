@@ -480,8 +480,10 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         }
         // scope === 'team' falls through: dropped silently.
 
-        chatRepository.logChatMessage(record.name, stripped, record.player.ipAddress)
-            .catch((err) => console.error('Error when attempting to log chat message', err));
+        if (config.server.logChat) {
+            chatRepository.logChatMessage(record.name, stripped, record.player.ipAddress)
+                .catch((err) => console.error('Error when attempting to log chat message', err));
+        }
     });
 
     socket.on(ClientEvent.heartbeat, (target: { x: number; y: number }) => {
