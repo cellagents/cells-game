@@ -30,10 +30,10 @@ import {
     type Leaderboard,
     type Message,
     type Rules
-} from '@cellagents/game-protocol';
+} from '@cellagents/game-protocol/wire';
 import type { WorldSize } from './camera';
 
-export type { Capability } from '@cellagents/game-protocol';
+export type { Capability } from '@cellagents/game-protocol/wire';
 
 /** Durable client-identity key kept in localStorage so the server can
  *  recognise this browser install across sessions. */

@@ -5,7 +5,7 @@
 // to include) are passed per draw call so a single Renderer instance
 // can serve both a main viewport and a minimap.
 
-import type { Entity, Tick } from '@cellagents/game-protocol';
+import type { Entity, Tick } from '@cellagents/game-protocol/wire';
 import type { Camera, WorldSize } from './camera';
 
 const FOOD_RADIUS = 10;
