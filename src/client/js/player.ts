@@ -173,11 +173,11 @@ createViewport({
                 else vp?.chat?.addSystem(`Unrecognized command: ${text}, type -help for the list.`);
                 return;
             }
-            // Server stamps `from` and echoes a `message` back; the
-            // local echo keeps the chat log snappy if the socket
-            // round-trip is slow.
+            // Server stamps `from` and echoes a `message` back
+            // (io.emit for scope='all', explicit socket.emit for
+            // 'direct'), which the chat widget renders. No local
+            // append or the sender would see every message twice.
             game.sendSay(text);
-            vp?.chat?.addChat(playerName, text);
         }
     },
     leaderboardEl: document.getElementById('leaderboard'),

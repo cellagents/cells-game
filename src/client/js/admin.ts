@@ -96,9 +96,19 @@ function tearDownChat(): void {
 
 function connectChat(): void {
     if (chat) return;
-    // Admin joins as a spectator so the server includes it in io.emit().
-    logSocket = io(SERVER_BASE, { query: { type: 'spectator', data: 'full' }, reconnection: true });
-    logSocket.on('welcome', () => logSocket && logSocket.emit('gotit'));
+    // Admin subscribes as an omniscient observer so the server
+    // includes it in io.emit() for message/chat broadcasts.
+    // Protocol 1.0 handshake: send a Subscribe payload with the
+    // `omniscient` capability. Pre-1.0's { type: 'spectator' }
+    // query-string hint is gone and the server would reject it.
+    logSocket = io(SERVER_BASE, { reconnection: true });
+    logSocket.on('connect', () => {
+        logSocket?.emit('subscribe', {
+            protocol: '1.0',
+            userAgent: 'cells-game-admin/web',
+            capabilities: ['omniscient']
+        });
+    });
 
     chat = createChat({
         container: chatboxEl,
