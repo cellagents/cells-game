@@ -119,8 +119,9 @@ async function broadcastAsAdmin(message: string): Promise<void> {
             const body = await res.json().catch(() => ({}));
             throw new Error(body.error || `${res.status}`);
         }
-        // The server echoes the broadcast as serverSendPlayerChat, so the
-        // sent line appears via the socket subscription. No local append.
+        // The server emits the broadcast as a `message` event with
+        // from:null, so the sent line appears via the socket
+        // subscription. No local append.
     } catch (err) {
         if ((err as Error).message !== '401') setStatus(`broadcast failed: ${(err as Error).message}`, true);
     }

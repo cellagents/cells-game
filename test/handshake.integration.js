@@ -288,4 +288,146 @@ describe('protocol 1.0 — handshake integration', function () {
         expect(afterClear.self).to.be.null;
         try { spec.sock.disconnect(); player.sock.disconnect(); } catch {}
     });
+
+    it('a follow holder whose target dies receives ticks with self=null', async () => {
+        const target = await connectAndSubscribe({
+            protocol: '1.0',
+            userAgent: 'test/0.1',
+            capabilities: ['presence', 'steer', 'act'],
+            name: 'quarry',
+            screen: { width: 800, height: 600 }
+        });
+        expect(target.welcome).to.exist;
+        const targetId = target.welcome.self.id;
+        const spec = await connectAndSubscribe(
+            { protocol: '1.0', userAgent: 'test/0.1', capabilities: ['omniscient', 'follow'] },
+            { collect: ['tick'] }
+        );
+        spec.sock.emit('setFollow', { target: targetId });
+        await new Promise((r) => setTimeout(r, 250));
+        // Confirm follow latched before we kill the target.
+        const afterFollow = spec.events.tick.at(-1);
+        expect(afterFollow.self, 'spectator should see the target before it dies').to.not.be.null;
+        try { target.sock.disconnect(); } catch {}
+        await new Promise((r) => setTimeout(r, 400));
+        const afterDeath = spec.events.tick.at(-1);
+        expect(afterDeath.self, 'spectator sees self=null once the followed target is gone').to.be.null;
+        try { spec.sock.disconnect(); } catch {}
+    });
+
+    it('say scope=direct reaches only the recipient and echoes to the sender', async () => {
+        const alice = await connectAndSubscribe(
+            {
+                protocol: '1.0', userAgent: 'test/0.1',
+                capabilities: ['presence', 'steer', 'act', 'chat'],
+                name: 'alice', screen: { width: 800, height: 600 }
+            },
+            { collect: ['message'] }
+        );
+        const bob = await connectAndSubscribe(
+            {
+                protocol: '1.0', userAgent: 'test/0.1',
+                capabilities: ['presence', 'steer', 'act', 'chat'],
+                name: 'bob', screen: { width: 800, height: 600 }
+            },
+            { collect: ['message'] }
+        );
+        const eve = await connectAndSubscribe(
+            {
+                protocol: '1.0', userAgent: 'test/0.1',
+                capabilities: ['presence', 'steer', 'act', 'chat'],
+                name: 'eve', screen: { width: 800, height: 600 }
+            },
+            { collect: ['message'] }
+        );
+        const bobId = bob.welcome.self.id;
+        alice.sock.emit('say', { scope: 'direct', to: bobId, text: 'psst' });
+        await new Promise((r) => setTimeout(r, 400));
+        const aliceGot = alice.events.message.find((m) => m.text === 'psst');
+        const bobGot = bob.events.message.find((m) => m.text === 'psst');
+        const eveGot = eve.events.message.find((m) => m.text === 'psst');
+        expect(aliceGot, 'sender gets the echo').to.exist;
+        expect(bobGot, 'recipient gets it').to.exist;
+        expect(eveGot, 'third party must not see it').to.be.undefined;
+        try { alice.sock.disconnect(); bob.sock.disconnect(); eve.sock.disconnect(); } catch {}
+    });
+
+    it('say scope=team is dropped silently', async () => {
+        const watcher = await connectAndSubscribe(
+            { protocol: '1.0', userAgent: 'test/0.1', capabilities: ['omniscient'] },
+            { collect: ['message'] }
+        );
+        const sender = await connectAndSubscribe({
+            protocol: '1.0', userAgent: 'test/0.1',
+            capabilities: ['presence', 'steer', 'act', 'chat'],
+            name: 'teamish', screen: { width: 800, height: 600 }
+        });
+        sender.sock.emit('say', { scope: 'team', text: 'team-only' });
+        await new Promise((r) => setTimeout(r, 400));
+        expect(watcher.events.message.filter((m) => m.text === 'team-only')).to.deep.equal([]);
+        try { watcher.sock.disconnect(); sender.sock.disconnect(); } catch {}
+    });
+
+    it('say text longer than chatMaxLength is truncated (connection kept)', async () => {
+        const watcher = await connectAndSubscribe(
+            { protocol: '1.0', userAgent: 'test/0.1', capabilities: ['omniscient'] },
+            { collect: ['message'] }
+        );
+        const sender = await connectAndSubscribe({
+            protocol: '1.0', userAgent: 'test/0.1',
+            capabilities: ['presence', 'steer', 'act', 'chat'],
+            name: 'longwind', screen: { width: 800, height: 600 }
+        });
+        const maxLen = watcher.welcome.rules.chatMaxLength;
+        expect(maxLen).to.be.a('number');
+        const payload = 'x'.repeat(maxLen + 50);
+        sender.sock.emit('say', { scope: 'all', text: payload });
+        await new Promise((r) => setTimeout(r, 400));
+        const msg = watcher.events.message.find((m) => typeof m.text === 'string' && m.text.startsWith('x'));
+        expect(msg, 'the truncated message must still arrive').to.exist;
+        expect(msg.text.length).to.equal(maxLen);
+        expect(sender.sock.connected, 'sender stays connected after over-length say').to.be.true;
+        try { watcher.sock.disconnect(); sender.sock.disconnect(); } catch {}
+    });
+
+    it('action from a subscriber without act capability is dropped silently', async () => {
+        const r = await connectAndSubscribe({
+            protocol: '1.0', userAgent: 'test/0.1',
+            // presence + steer only; act intentionally absent.
+            capabilities: ['presence', 'steer'],
+            name: 'nohands', screen: { width: 800, height: 600 }
+        });
+        expect(r.welcome).to.exist;
+        expect(r.welcome.actions).to.deep.equal([]);
+        r.sock.emit('action', { type: 'split' });
+        r.sock.emit('action', { type: 'eject' });
+        await new Promise((res) => setTimeout(res, 300));
+        expect(r.sock.connected, 'the server does not disconnect on a disallowed action').to.be.true;
+        try { r.sock.disconnect(); } catch {}
+    });
+
+    it('say.data round-trips to recipients when well-formed', async () => {
+        const watcher = await connectAndSubscribe(
+            { protocol: '1.0', userAgent: 'test/0.1', capabilities: ['omniscient'] },
+            { collect: ['message'] }
+        );
+        const sender = await connectAndSubscribe({
+            protocol: '1.0', userAgent: 'test/0.1',
+            capabilities: ['presence', 'steer', 'act', 'chat'],
+            name: 'botbot', screen: { width: 800, height: 600 }
+        });
+        const payload = { intent: 'go', target: 42, aggressive: true };
+        sender.sock.emit('say', { scope: 'all', text: 'ping', data: payload });
+        await new Promise((r) => setTimeout(r, 400));
+        const msg = watcher.events.message.find((m) => m.text === 'ping');
+        expect(msg, 'the message arrives').to.exist;
+        expect(msg.data, 'data is forwarded').to.deep.equal(payload);
+
+        // Malformed data (nested object) drops the whole message.
+        sender.sock.emit('say', { scope: 'all', text: 'bad-pong', data: { nested: { x: 1 } } });
+        await new Promise((r) => setTimeout(r, 400));
+        const bad = watcher.events.message.find((m) => m.text === 'bad-pong');
+        expect(bad, 'a message with malformed data must be dropped entirely').to.be.undefined;
+        try { watcher.sock.disconnect(); sender.sock.disconnect(); } catch {}
+    });
 });

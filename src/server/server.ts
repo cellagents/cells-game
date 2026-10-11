@@ -437,6 +437,20 @@ function wireEvents(socket: Socket, record: Subscriber): void {
         const stripped = d.text.replace(/(<([^>]+)>)/ig, '').substring(0, maxLen);
         if (!stripped) return;
 
+        // Structured bot payload. Protocol allows a flat
+        // Record<string, RulesPrimitive>; drop the whole message if
+        // what we were handed doesn't match (not just the data: the
+        // sender asked for a structured send and the structure is
+        // malformed, so silently stripping the data would mislead).
+        let forwardedData: Record<string, string | number | boolean> | undefined;
+        if (d.data !== undefined) {
+            if (!d.data || typeof d.data !== 'object' || Array.isArray(d.data)) return;
+            const entries = Object.entries(d.data as Record<string, unknown>);
+            const okValues = entries.every(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean');
+            if (!okValues) return;
+            forwardedData = Object.fromEntries(entries) as Record<string, string | number | boolean>;
+        }
+
         if (config.server.logChat) {
             const t = new Date();
             console.log('[CHAT] [' + t.getHours() + ':' + t.getMinutes() + '] ' + record.name + ': ' + stripped);
@@ -447,7 +461,8 @@ function wireEvents(socket: Socket, record: Subscriber): void {
             from: { id: record.player.id, name: record.name },
             scope: d.scope,
             text: stripped,
-            time: now
+            time: now,
+            ...(forwardedData ? { data: forwardedData } : {})
         };
 
         if (d.scope === 'all') {
