@@ -309,6 +309,42 @@ function attachSubscriber(socket: Socket, raw: unknown): void {
     const caps = new Set<Capability>(sub.capabilities);
     const now = Date.now();
 
+    // Evict any prior subscriber identifying with the same clientId.
+    // A reconnecting client (bots, mcp sessions, humans) opens a new
+    // socket.id before the server has observed the old one dropping.
+    // Without this, both subscribers coexist for the ~5 s it takes
+    // the heartbeat watchdog to kick the ghost, during which the
+    // player name has two live cells on the map. The eviction uses
+    // the opaque clientId the subscriber supplies so a legitimate
+    // second human picking the same display name is NOT booted.
+    if (sub.clientId) {
+        for (const sid of Object.keys(subscribers)) {
+            if (sid === socket.id) continue;
+            const prior = subscribers[sid];
+            if (prior.clientId !== sub.clientId) continue;
+            const priorSocket = sockets[sid];
+            if (priorSocket) {
+                priorSocket.emit(ServerEvent.kick, {
+                    reason: 'Replaced by a newer session with the same clientId.'
+                });
+                // cleanupSocket keys off socket.id, so this cleans
+                // up the prior session's state before the kick's
+                // transport close races in.
+                cleanupSocket(priorSocket, /* notifyOthers */ true);
+                priorSocket.disconnect();
+            } else {
+                // Dangling record without a live socket: should not
+                // happen (sockets and subscribers are in lockstep)
+                // but defend against it anyway.
+                if (prior.player) {
+                    map.players.removePlayerByID(prior.player.id);
+                }
+                delete subscribers[sid];
+            }
+            console.log(`[INFO] Evicted prior session for clientId ${sub.clientId} (socket ${sid})`);
+        }
+    }
+
     // Register BEFORE emitting welcome so the per-event capability
     // gates below find the record on their first lookup.
     sockets[socket.id] = socket;
